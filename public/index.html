@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>POK POK YI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div class="crt"></div>
+  <div class="scanlines"></div>
+
+  <!-- ===== LOBBY ===== -->
+  <div id="s-lobby" class="screen active">
+    <div class="deco-bubbles">
+      <div class="db" style="width:110px;height:110px;left:4%;top:8%;animation-delay:0s"></div>
+      <div class="db" style="width:75px;height:75px;left:88%;top:15%;animation-delay:1.1s"></div>
+      <div class="db" style="width:90px;height:90px;left:10%;top:72%;animation-delay:0.5s"></div>
+      <div class="db" style="width:60px;height:60px;left:80%;top:70%;animation-delay:1.7s"></div>
+      <div class="db" style="width:130px;height:130px;left:50%;top:2%;animation-delay:0.8s"></div>
+      <div class="db" style="width:65px;height:65px;left:65%;top:82%;animation-delay:2.1s"></div>
+      <div class="db" style="width:85px;height:85px;left:25%;top:88%;animation-delay:1.4s"></div>
+    </div>
+
+    <div class="lobby-wrap">
+      <div class="logo-block">
+        <div class="logo-stars">✦ &nbsp; ✦ &nbsp; ✦</div>
+        <h1 class="logo-title">POK<br><span>POK YI</span></h1>
+        <div class="logo-sub">스트레스 받을땐 뽁뽁이 터트리기</div>
+      </div>
+
+      <div class="lobby-card">
+        <div class="field-group">
+          <label class="field-label">▸ NICKNAME</label>
+          <input id="inp-nick" type="text" class="px-input" placeholder="닉네임 입력..." maxlength="10" autocomplete="off">
+        </div>
+
+        <button id="btn-create" class="px-btn primary full">
+          ◉ &nbsp; CREATE ROOM
+        </button>
+
+        <div class="or-divider"><span>── OR ──</span></div>
+
+        <div class="join-row">
+          <input id="inp-code" type="text" class="px-input code-input" placeholder="ROOM CODE" maxlength="6" autocomplete="off" style="text-transform:uppercase">
+          <button id="btn-join" class="px-btn secondary">JOIN ▶</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== WAITING ===== -->
+  <div id="s-waiting" class="screen">
+    <div class="waiting-wrap">
+      <div class="wait-header blink">● WAITING FOR PLAYER 2 ●</div>
+      <div class="wait-label">[ ROOM CODE ]</div>
+      <div id="disp-code" class="code-big">------</div>
+      <button id="btn-copy" class="px-btn accent small">⧉ COPY CODE</button>
+      <div id="copy-ok" class="copy-ok">✔ COPIED!</div>
+      <div id="wait-players" class="wait-players"></div>
+      <div class="dot-loader"><span></span><span></span><span></span><span></span></div>
+      <button id="btn-wait-back" class="px-btn ghost small">◄ BACK</button>
+    </div>
+  </div>
+
+  <!-- ===== GAME ===== -->
+  <div id="s-game" class="screen">
+    <div class="game-hud">
+      <div class="hud-player" id="hud-p1">
+        <div class="hud-nick p1" id="nick-p1">P1</div>
+        <div class="hud-score" id="sc-p1">0</div>
+      </div>
+
+      <div class="hud-center">
+        <div class="hud-title">POK POK YI</div>
+        <div class="hud-timer" id="game-timer">60</div>
+        <div class="hud-room">ROOM: <span id="hud-room-code"></span></div>
+      </div>
+
+      <div class="hud-player" id="hud-p2">
+        <div class="hud-nick p2" id="nick-p2">P2</div>
+        <div class="hud-score" id="sc-p2">0</div>
+      </div>
+    </div>
+
+    <div class="grid-wrap">
+      <div id="bubble-grid" class="bubble-grid"></div>
+    </div>
+
+    <div class="game-foot">
+      <div class="legend">
+        <span class="leg-n">◉ NORMAL = 5 PTS</span>
+        <span class="leg-s">◉ SPECIAL = 10 PTS</span>
+      </div>
+      <button id="btn-game-back" class="px-btn ghost tiny">◄ LOBBY</button>
+    </div>
+  </div>
+
+  <!-- ===== END ===== -->
+  <div id="s-end" class="screen">
+    <div class="end-wrap">
+      <h2 class="end-title blink">✦ GAME OVER ✦</h2>
+
+      <div id="results" class="results-board"></div>
+
+      <div class="restart-row">
+        NEXT GAME IN &nbsp;<span id="restart-cd" class="cd-num">15</span>s
+      </div>
+
+      <div class="chat-box">
+        <div class="chat-header">▼ &nbsp; CHAT &nbsp; ▼</div>
+        <div id="chat-log" class="chat-log"></div>
+        <div class="chat-input-row">
+          <input id="chat-inp" type="text" class="px-input" placeholder="메시지..." maxlength="60" autocomplete="off">
+          <button id="btn-chat" class="px-btn accent small">SEND</button>
+        </div>
+      </div>
+
+      <button id="btn-end-back" class="px-btn ghost small">◄ LOBBY</button>
+    </div>
+  </div>
+
+  <!-- ===== TOAST ===== -->
+  <div id="toast" class="toast"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
