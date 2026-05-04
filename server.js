@@ -22,7 +22,7 @@ const SINGLE_LEVEL_MULT = [1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4, 2.6, 2.8];
 function pickLayout(vw, vh) {
   /* HUD + footer + safe-area buffer (notch/home indicator). Errs on the high
      side so client never overflows; client uses 1fr grid + measured bubble. */
-  const CHROME = vw < 500 ? 200 : 160;
+  const CHROME = vw < 500 ? 170 : 150;
   const aw = Math.max(vw - 6, 320);
   const ah = Math.max(vh - CHROME, 260);
 
@@ -32,11 +32,11 @@ function pickLayout(vw, vh) {
   else if (vw < 1400)  target = 50;   /* small desktop */
   else                 target = 56;   /* large desktop */
 
-  /* Pick cols from width, derive rows so cells stay near-square.
-     This minimizes inscribed-bubble padding within cells. */
+  /* Pick cols from width, derive rows from cell size.
+     ceil(rows) so vertical fill is maximized; horizontal trims slightly. */
   let cols = Math.max(5, Math.min(28, Math.round(aw / target)));
   const cellSize = aw / cols;
-  let rows = Math.max(5, Math.min(24, Math.round(ah / cellSize)));
+  let rows = Math.max(5, Math.min(28, Math.ceil(ah / cellSize) + 1));
   return { cols, rows };
 }
 const SPECIAL_COLORS = ['red', 'blue', 'purple', 'pink', 'yellow'];
