@@ -364,18 +364,13 @@ html, body {
 
 /* ── Bubble styles ── */
 .bubble {
+  aspect-ratio: 1;
   border-radius: 50%;
   cursor: pointer;
   position: relative;
   transition: transform .1s;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
-  /* fill the 1fr cell so bubbles touch with only the CSS gap between them.
-     pickLayout keeps cells near-square so bubbles appear ~circular. */
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  min-height: 0;
 }
 .bubble:not(.popped):hover  { transform: scale(1.12); }
 .bubble:not(.popped):active { transform: scale(0.88); }

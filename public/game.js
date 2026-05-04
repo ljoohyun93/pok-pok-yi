@@ -609,11 +609,19 @@ function renderGrid() {
 
 function fitGrid() {
   const grid = document.getElementById('bubble-grid');
-  if (!grid) return;
-  /* 1fr cells fill 100% of wrap. Bubbles stretch into cells — pickLayout keeps
-     cells near-square so visual ovality is < 5% (reads as a circle). */
-  grid.style.gridTemplateColumns = `repeat(${COLS}, 1fr)`;
-  grid.style.gridTemplateRows = `repeat(${ROWS}, 1fr)`;
+  const wrap = document.querySelector('.grid-wrap');
+  if (!grid || !wrap) return;
+  /* Fixed pixel-sized cells = perfect circles via aspect-ratio:1.
+     Grid centered in wrap; minor edge space is acceptable per user. */
+  const gap = 1;
+  const aw = wrap.clientWidth;
+  const ah = wrap.clientHeight;
+  if (aw < 20 || ah < 20) return;
+  const colSize = (aw - (COLS - 1) * gap) / COLS;
+  const rowSize = (ah - (ROWS - 1) * gap) / ROWS;
+  const size = Math.max(14, Math.floor(Math.min(colSize, rowSize)));
+  grid.style.gridTemplateColumns = `repeat(${COLS}, ${size}px)`;
+  grid.style.gridTemplateRows    = `repeat(${ROWS}, ${size}px)`;
 }
 
 window.addEventListener('resize', () => requestAnimationFrame(fitGrid));
