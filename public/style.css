@@ -366,13 +366,14 @@ html, body {
 
 /* ── Bubble styles ── */
 .bubble {
-  aspect-ratio: 1;
   border-radius: 50%;
   cursor: pointer;
   position: relative;
   transition: transform .1s;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
+  min-width: 0;
+  min-height: 0;
 }
 .bubble:not(.popped):hover  { transform: scale(1.12); }
 .bubble:not(.popped):active { transform: scale(0.88); }
@@ -840,9 +841,10 @@ html, body {
   padding: 6px 18px;
   background: var(--bg2); border-top: 2px solid rgba(0,245,196,0.15);
 }
-.legend { display: flex; gap: 18px; font-size: 6px; }
+.legend { display: flex; gap: 14px; font-size: 6px; flex-wrap: wrap; }
 .leg-n { color: var(--text-dim); }
-.leg-s { color: var(--gold); }
+.leg-low { color: #ffdd66; }
+.leg-high { color: #b3a3ff; }
 
 /* ─────────────────────────────────────────
    END

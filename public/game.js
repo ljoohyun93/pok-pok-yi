@@ -608,17 +608,12 @@ function renderGrid() {
 }
 
 function fitGrid() {
-  const wrap = document.querySelector('.grid-wrap');
-  if (!wrap) return;
-  const aw = wrap.clientWidth - 4;
-  const ah = wrap.clientHeight - 4;
-  const gap = 3;
-  const colSize = Math.floor((aw - (COLS - 1) * gap) / COLS);
-  const rowSize = Math.floor((ah - (ROWS - 1) * gap) / ROWS);
-  const size = Math.max(16, Math.min(colSize, rowSize));
   const grid = document.getElementById('bubble-grid');
-  grid.style.gridTemplateColumns = `repeat(${COLS}, ${size}px)`;
-  grid.style.gridTemplateRows = `repeat(${ROWS}, ${size}px)`;
+  if (!grid) return;
+  /* 1fr-based grid: always fills 100% of grid-wrap (no edge empty space).
+     Bubbles use border-radius:50% so slight aspect mismatch reads as ~circle. */
+  grid.style.gridTemplateColumns = `repeat(${COLS}, 1fr)`;
+  grid.style.gridTemplateRows = `repeat(${ROWS}, 1fr)`;
 }
 window.addEventListener('resize', fitGrid);
 
@@ -641,6 +636,14 @@ function refreshBubbleClass(i) {
   el.className = 'bubble ' + bubbleClass(bubbles[i]);
 }
 
+/* Per-color points (mirrors server) */
+function pointsFor(color) {
+  if (color === 'normal') return 5;
+  if (color === 'red' || color === 'pink' || color === 'yellow') return 10;
+  if (color === 'blue' || color === 'purple') return 15;
+  return 0;
+}
+
 /* ── Pop a bubble ── */
 function onClickBubble(i) {
   const b = bubbles[i];
@@ -654,6 +657,7 @@ function onClickBubble(i) {
 
   const wasSpecial = b.color !== 'normal';
   const color = b.color;
+  const pts = pointsFor(color);
   b.popped = true;
 
   const grid = document.getElementById('bubble-grid');
@@ -661,7 +665,7 @@ function onClickBubble(i) {
   if (el) {
     el.classList.add('popping');
     spawnRing(el, wasSpecial ? color : null);
-    spawnScore(el, wasSpecial ? 10 : 5, myNum);
+    spawnScore(el, pts, myNum);
     setTimeout(() => {
       el.className = `bubble popped by-p${myNum}`;
     }, 150);

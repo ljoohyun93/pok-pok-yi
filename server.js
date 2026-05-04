@@ -38,13 +38,21 @@ function pickLayout(vw, vh) {
   return { cols, rows };
 }
 const SPECIAL_COLORS = ['red', 'blue', 'purple', 'pink', 'yellow'];
-const NORMAL_SCORE = 5;
-const SPECIAL_SCORE = 10;
-const SHIMMER_SCORE = 15;
+const SCORE_NORMAL = 5;
+const SCORE_LOW    = 10;  /* red, pink, yellow */
+const SCORE_HIGH   = 15;  /* blue, purple */
 const SHIMMER_MAX = 6;
 const BOMB_BONUS = 20;
 const BOMB_BLAST_COUNT = 10;
 const FIRE_BONUS = 25;
+
+function pointsFor(color) {
+  if (color === 'normal') return SCORE_NORMAL;
+  if (color === 'red' || color === 'pink' || color === 'yellow') return SCORE_LOW;
+  if (color === 'blue' || color === 'purple') return SCORE_HIGH;
+  /* shimmer/bomb/fire: trigger pays a bonus, chain items pay their own colors */
+  return 0;
+}
 const ROOM_TTL = 30 * 60 * 1000;
 const MAX_PLAYERS = 4;
 
@@ -352,10 +360,7 @@ io.on('connection', socket => {
         const b = candidates.splice(idx, 1)[0];
         b.popped = true;
         const c2 = b.color;
-        const p = c2 === 'shimmer' ? SHIMMER_SCORE
-                : c2 === 'normal'  ? NORMAL_SCORE
-                : c2 === 'bomb' || c2 === 'fire' ? 0
-                : SPECIAL_SCORE;
+        const p = pointsFor(c2);
         player.score += p;
         chain.push({ id: b.id, color: c2, pts: p });
       }
@@ -379,9 +384,7 @@ io.on('connection', socket => {
         if (r === 0 || r === R - 1 || c === 0 || c === C - 1) {
           b.popped = true;
           const c2 = b.color;
-          const p = c2 === 'shimmer' ? SHIMMER_SCORE
-                  : c2 === 'normal'  ? NORMAL_SCORE
-                  : SPECIAL_SCORE;
+          const p = pointsFor(c2);
           player.score += p;
           chain.push({ id: i, color: c2, pts: p });
         }
@@ -413,9 +416,7 @@ io.on('connection', socket => {
         if (b.popped) return;
         b.popped = true;
         const c2 = b.color;
-        const p = c2 === 'shimmer' ? SHIMMER_SCORE
-                : c2 === 'normal'  ? NORMAL_SCORE
-                : SPECIAL_SCORE;
+        const p = pointsFor(c2);
         player.score += p;
         chain.push({ id: bid, color: c2, pts: p });
       });
@@ -429,7 +430,7 @@ io.on('connection', socket => {
 
     /* ── Normal pop ── */
     bubble.popped = true;
-    const pts = color === 'normal' ? NORMAL_SCORE : SPECIAL_SCORE;
+    const pts = pointsFor(color);
     player.score += pts;
 
     io.to(socket.data.room).emit('bubblePopped', {
@@ -441,16 +442,16 @@ io.on('connection', socket => {
       scores: room.players.filter(p => p.active).map(({ num, score }) => ({ num, score })),
     });
 
-    /* Respawn — fast for both modes; multi slightly faster */
-    const respawnChance = room.mode === 'multi' ? 0.50 : 0.40;
-    const respawnMin    = room.mode === 'multi' ? 700  : 900;
-    const respawnRange  = room.mode === 'multi' ? 3000 : 4000;
-    if (Math.random() < respawnChance && room.timer > 6) {
+    /* Respawn — very fast so the board never empties */
+    const respawnChance = room.mode === 'multi' ? 0.70 : 0.60;
+    const respawnMin    = 350;
+    const respawnRange  = room.mode === 'multi' ? 1400 : 1800;
+    if (Math.random() < respawnChance && room.timer > 5) {
       const delay = respawnMin + Math.floor(Math.random() * respawnRange);
       setTimeout(() => {
         if (!rooms.has(room.code)) return;
         if (room.state !== 'playing') return;
-        if (room.timer <= 4) return;
+        if (room.timer <= 3) return;
         if (!bubble.popped) return;
         bubble.popped = false;
         bubble.color = 'normal';
