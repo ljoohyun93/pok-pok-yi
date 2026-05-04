@@ -264,6 +264,37 @@ socket.on('bubblePopped', ({ id, socketId, num, pts, color, scores: newScores })
   }
 });
 
+socket.on('rowPopped', ({ direction, row, col, triggerId, num, chain, scores }) => {
+  scores.forEach(s => updateScore(s.num, s.score));
+  showRowFlash(direction, row, col);
+  playMagicChime();
+
+  /* cascade pop in order from trigger outward */
+  const triggerIdx = chain.findIndex(c => c.id === triggerId);
+  const ordered = [...chain].sort((a, b) => {
+    const da = Math.abs(chain.findIndex(x => x.id === a.id) - triggerIdx);
+    const db = Math.abs(chain.findIndex(x => x.id === b.id) - triggerIdx);
+    return da - db;
+  });
+
+  ordered.forEach((item, i) => {
+    setTimeout(() => {
+      if (!bubbles[item.id] || bubbles[item.id].popped) {
+        bubbles[item.id] = bubbles[item.id] || {};
+        bubbles[item.id].popped = true;
+        bubbles[item.id].poppedBy = num;
+      } else {
+        bubbles[item.id].popped = true;
+        bubbles[item.id].poppedBy = num;
+      }
+      animatePop(item.id, num, item.color !== 'normal' && item.color !== 'shimmer');
+      if (item.color === 'shimmer') playCoin();
+      else if (item.color !== 'normal') playCoin();
+      else playPop();
+    }, i * 28);
+  });
+});
+
 socket.on('bubbleRespawned', ({ id }) => {
   if (!bubbles[id]) return;
   bubbles[id].popped = false;
@@ -387,7 +418,10 @@ window.addEventListener('resize', fitGrid);
 
 function bubbleClass(b) {
   if (b.popped) return 'popped' + (b.poppedBy ? ` by-p${b.poppedBy}` : '');
-  const map = { normal: 'normal', red: 's-red', blue: 's-blue', purple: 's-purple' };
+  const map = {
+    normal: 'normal', red: 's-red', blue: 's-blue',
+    purple: 's-purple', shimmer: 's-shimmer',
+  };
   return map[b.color] || 'normal';
 }
 
@@ -402,6 +436,12 @@ function refreshBubbleClass(i) {
 function onClickBubble(i) {
   const b = bubbles[i];
   if (b.popped) return;
+
+  /* Shimmer — let server orchestrate the chain; we just send & wait */
+  if (b.color === 'shimmer') {
+    socket.emit('popBubble', { id: i });
+    return;
+  }
 
   const wasSpecial = b.color !== 'normal';
   const color = b.color;
@@ -422,6 +462,80 @@ function onClickBubble(i) {
   else playPop();
 
   socket.emit('popBubble', { id: i });
+}
+
+/* ── Shimmer row/col flash beam ── */
+function showRowFlash(direction, row, col) {
+  const grid = document.getElementById('bubble-grid');
+  if (!grid) return;
+  const flash = document.createElement('div');
+  flash.className = 'row-flash' + (direction === 'v' ? ' vertical' : '');
+
+  if (direction === 'h') {
+    const first = grid.children[row * COLS];
+    const last  = grid.children[row * COLS + COLS - 1];
+    if (!first || !last) return;
+    const r1 = first.getBoundingClientRect();
+    const r2 = last.getBoundingClientRect();
+    flash.style.cssText = `
+      left:${r1.left - 14}px;
+      top:${r1.top + r1.height / 2 - 9}px;
+      width:${r2.right - r1.left + 28}px;
+      height:18px;
+    `;
+  } else {
+    const first = grid.children[col];
+    const last  = grid.children[(ROWS - 1) * COLS + col];
+    if (!first || !last) return;
+    const r1 = first.getBoundingClientRect();
+    const r2 = last.getBoundingClientRect();
+    flash.style.cssText = `
+      left:${r1.left + r1.width / 2 - 9}px;
+      top:${r1.top - 14}px;
+      width:18px;
+      height:${r2.bottom - r1.top + 28}px;
+    `;
+  }
+
+  document.body.appendChild(flash);
+  setTimeout(() => flash.remove(), 620);
+}
+
+/* ── Magic chime for shimmer chain ── */
+function playMagicChime() {
+  try {
+    const ctx = getAudioCtx();
+    const now = ctx.currentTime;
+    /* ascending arpeggio */
+    [659, 880, 1175, 1568, 2093].forEach((f, i) => {
+      const o = ctx.createOscillator();
+      o.type = 'triangle';
+      o.frequency.setValueAtTime(f, now + i * 0.05);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, now + i * 0.05);
+      g.gain.linearRampToValueAtTime(0.22, now + i * 0.05 + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.05 + 0.55);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(now + i * 0.05); o.stop(now + i * 0.05 + 0.6);
+    });
+    /* shimmer noise sweep */
+    const len = Math.floor(ctx.sampleRate * 0.5);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.setValueAtTime(2500, now);
+    bp.frequency.exponentialRampToValueAtTime(800, now + 0.5);
+    bp.Q.value = 4;
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(0.18, now);
+    ng.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+    src.connect(bp); bp.connect(ng); ng.connect(ctx.destination);
+    src.start(now);
+  } catch (_) {}
 }
 
 function animatePop(id, num, wasSpecial) {

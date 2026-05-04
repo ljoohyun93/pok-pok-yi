@@ -18,6 +18,8 @@ const TOTAL = ROWS * COLS;
 const SPECIAL_COLORS = ['red', 'blue', 'purple'];
 const NORMAL_SCORE = 5;
 const SPECIAL_SCORE = 10;
+const SHIMMER_SCORE = 15;
+const SHIMMER_MAX = 6;
 const ROOM_TTL = 30 * 60 * 1000;
 
 function genCode() {
@@ -53,6 +55,7 @@ function startGame(code) {
   room.state = 'playing';
   room.timer = GAME_DURATION;
   room.bubbles = makeBubbles();
+  room.shimmerCount = 0;
   active.forEach(p => { p.score = 0; });
 
   io.to(code).emit('gameStart', {
@@ -72,7 +75,7 @@ function startGame(code) {
     const unpopped = room.bubbles.filter(b => !b.popped);
 
     unpopped.forEach(b => {
-      if (b.color !== 'normal' && Math.random() < 0.45) b.color = 'normal';
+      if (b.color !== 'normal' && b.color !== 'shimmer' && Math.random() < 0.45) b.color = 'normal';
     });
 
     const normals = unpopped.filter(b => b.color === 'normal');
@@ -82,6 +85,13 @@ function startGame(code) {
       if (normals[idx]) {
         normals.splice(idx, 1)[0].color = SPECIAL_COLORS[Math.floor(Math.random() * 3)];
       }
+    }
+
+    /* Shimmer spawn — max SHIMMER_MAX per game */
+    if (room.shimmerCount < SHIMMER_MAX && Math.random() < 0.22 && normals.length > 0) {
+      const idx = Math.floor(Math.random() * normals.length);
+      normals[idx].color = 'shimmer';
+      room.shimmerCount++;
     }
 
     io.to(code).emit('bubblesUpdate', room.bubbles);
@@ -160,11 +170,46 @@ io.on('connection', socket => {
     const bubble = room.bubbles[id];
     if (!bubble || bubble.popped) return;
 
-    const color = bubble.color;
-    bubble.popped = true;
     const player = room.players.find(p => p.id === socket.id && p.active);
     if (!player) return;
 
+    const color = bubble.color;
+
+    /* ── Shimmer: chain pop the entire row OR column at random ── */
+    if (color === 'shimmer') {
+      const direction = Math.random() < 0.5 ? 'h' : 'v';
+      const row = Math.floor(id / COLS);
+      const col = id % COLS;
+      const chain = [];
+
+      const indices = [];
+      if (direction === 'h') {
+        for (let c = 0; c < COLS; c++) indices.push(row * COLS + c);
+      } else {
+        for (let r = 0; r < ROWS; r++) indices.push(r * COLS + col);
+      }
+
+      indices.forEach(bid => {
+        const b = room.bubbles[bid];
+        if (b.popped) return;
+        b.popped = true;
+        const c2 = b.color;
+        const p = c2 === 'shimmer' ? SHIMMER_SCORE
+                : c2 === 'normal'  ? NORMAL_SCORE
+                : SPECIAL_SCORE;
+        player.score += p;
+        chain.push({ id: bid, color: c2, pts: p });
+      });
+
+      io.to(socket.data.room).emit('rowPopped', {
+        direction, row, col, triggerId: id, num: player.num, chain,
+        scores: room.players.filter(p => p.active).map(({ num, score }) => ({ num, score })),
+      });
+      return;
+    }
+
+    /* ── Normal pop ── */
+    bubble.popped = true;
     const pts = color === 'normal' ? NORMAL_SCORE : SPECIAL_SCORE;
     player.score += pts;
 
@@ -179,7 +224,7 @@ io.on('connection', socket => {
 
     /* 20% chance to respawn within 10s — only if game still has > 10s left */
     if (Math.random() < 0.20 && room.timer > 10) {
-      const delay = 2000 + Math.floor(Math.random() * 7000); /* 2–9 s */
+      const delay = 2000 + Math.floor(Math.random() * 7000);
       setTimeout(() => {
         if (!rooms.has(room.code)) return;
         if (room.state !== 'playing') return;

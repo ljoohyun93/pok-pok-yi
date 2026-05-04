@@ -329,6 +329,99 @@ html, body {
   pointer-events: none;
 }
 
+/* ── Shimmer (rainbow) — pops entire row/col on click ── */
+.bubble.s-shimmer {
+  background:
+    radial-gradient(circle at 30% 25%, rgba(255,255,255,0.7) 0%, transparent 35%),
+    linear-gradient(45deg,
+      #ff1493 0%, #ff8800 16%, #ffee00 33%,
+      #00ff88 50%, #00ddff 66%, #b833ff 83%, #ff1493 100%);
+  background-size: 100% 100%, 300% 300%;
+  border: 2px solid rgba(255,255,255,0.9);
+  box-shadow:
+    inset 0 -5px 10px rgba(0,0,0,0.25),
+    inset 0 4px 8px rgba(255,255,255,0.55),
+    0 0 18px rgba(255,255,255,0.95),
+    0 0 36px rgba(255,200,255,0.7),
+    0 0 64px rgba(150,255,255,0.45);
+  animation:
+    shimmerSweep 1.4s linear infinite,
+    shimmerPulse 0.7s ease-in-out infinite;
+  z-index: 2;
+}
+.bubble.s-shimmer::before {
+  content: ''; position: absolute;
+  top: 12%; left: 18%; width: 38%; height: 26%;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at 38% 38%,
+    rgba(255,255,255,1) 0%,
+    rgba(255,255,255,0.85) 28%,
+    rgba(255,255,255,0.4) 62%, transparent 100%);
+  filter: blur(0.5px);
+  pointer-events: none;
+}
+.bubble.s-shimmer::after {
+  content: '✦';
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%,-50%);
+  font-size: 60%;
+  color: rgba(255,255,255,0.95);
+  text-shadow: 0 0 8px rgba(255,255,255,1), 0 0 16px rgba(255,255,255,0.8);
+  filter: blur(0);
+  pointer-events: none;
+  animation: sparkSpin 2s linear infinite;
+}
+@keyframes shimmerSweep {
+  0%   { background-position: 0% 50%, 0% 50%; }
+  100% { background-position: 0% 50%, 300% 50%; }
+}
+@keyframes shimmerPulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.1); }
+}
+@keyframes sparkSpin {
+  0%   { transform: translate(-50%,-50%) rotate(0deg); }
+  100% { transform: translate(-50%,-50%) rotate(360deg); }
+}
+
+/* Row-flash beam — appears across the popped row/col */
+.row-flash {
+  position: fixed;
+  pointer-events: none;
+  z-index: 700;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(255,255,255,0.4) 25%,
+    rgba(255,255,255,1) 50%,
+    rgba(255,255,255,0.4) 75%,
+    transparent 100%);
+  box-shadow:
+    0 0 24px rgba(255,255,255,0.95),
+    0 0 48px rgba(255,200,255,0.7),
+    0 0 80px rgba(150,255,255,0.5);
+  animation: rowFlashH 0.6s ease-out forwards;
+}
+.row-flash.vertical {
+  background: linear-gradient(0deg,
+    transparent 0%,
+    rgba(255,255,255,0.4) 25%,
+    rgba(255,255,255,1) 50%,
+    rgba(255,255,255,0.4) 75%,
+    transparent 100%);
+  animation: rowFlashV 0.6s ease-out forwards;
+}
+@keyframes rowFlashH {
+  0%   { opacity: 0; transform: scaleX(0.1); }
+  20%  { opacity: 1; transform: scaleX(1); }
+  100% { opacity: 0; transform: scaleX(1); }
+}
+@keyframes rowFlashV {
+  0%   { opacity: 0; transform: scaleY(0.1); }
+  20%  { opacity: 1; transform: scaleY(1); }
+  100% { opacity: 0; transform: scaleY(1); }
+}
+
 /* Shared neon highlights for specials — same dome geometry as normal */
 .bubble.s-red::before, .bubble.s-blue::before, .bubble.s-purple::before,
 .bubble.s-green::before {
