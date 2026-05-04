@@ -372,8 +372,12 @@ html, body {
   transition: transform .1s;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
-  min-width: 0;
-  min-height: 0;
+  /* fixed square size = inscribed in cell. Cells are 1fr so grid fills wrap;
+     this keeps bubbles perfectly round regardless of cell aspect. */
+  width: var(--bubble-size, 100%);
+  height: var(--bubble-size, 100%);
+  align-self: center;
+  justify-self: center;
 }
 .bubble:not(.popped):hover  { transform: scale(1.12); }
 .bubble:not(.popped):active { transform: scale(0.88); }

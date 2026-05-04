@@ -610,11 +610,29 @@ function renderGrid() {
 function fitGrid() {
   const grid = document.getElementById('bubble-grid');
   if (!grid) return;
-  /* 1fr-based grid: always fills 100% of grid-wrap (no edge empty space).
-     Bubbles use border-radius:50% so slight aspect mismatch reads as ~circle. */
+  /* 1fr cells fill 100% of grid-wrap (no edge empty space).
+     Then we measure cell dims and set each bubble to a SQUARE that inscribes
+     the cell — guarantees perfect circles on every device aspect ratio. */
   grid.style.gridTemplateColumns = `repeat(${COLS}, 1fr)`;
   grid.style.gridTemplateRows = `repeat(${ROWS}, 1fr)`;
+
+  const apply = () => {
+    const gap = 3;
+    const cw = grid.clientWidth;
+    const ch = grid.clientHeight;
+    if (cw < 10 || ch < 10) return;
+    const cellW = (cw - (COLS - 1) * gap) / COLS;
+    const cellH = (ch - (ROWS - 1) * gap) / ROWS;
+    const size = Math.max(12, Math.floor(Math.min(cellW, cellH)));
+    grid.style.setProperty('--bubble-size', `${size}px`);
+  };
+  requestAnimationFrame(apply);
+  /* second pass after fonts/layout settle */
+  setTimeout(apply, 50);
 }
+
+window.addEventListener('resize', () => requestAnimationFrame(fitGrid));
+window.addEventListener('orientationchange', () => setTimeout(fitGrid, 100));
 window.addEventListener('resize', fitGrid);
 
 function bubbleClass(b) {

@@ -20,10 +20,11 @@ const SINGLE_LEVEL_MULT = [1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4, 2.6, 2.8];
    This guarantees the grid fills the screen and bubbles look proportional
    on phones, tablets, and desktops. */
 function pickLayout(vw, vh) {
-  const HUD_H = 120;
-  const FOOTER_H = 38;
+  /* HUD + footer + safe-area buffer (notch/home indicator). Errs on the high
+     side so client never overflows; client uses 1fr grid + measured bubble. */
+  const CHROME = vw < 500 ? 200 : 160;
   const aw = Math.max(vw - 6, 320);
-  const ah = Math.max(vh - HUD_H - FOOTER_H, 260);
+  const ah = Math.max(vh - CHROME, 260);
 
   let target;
   if (vw < 500)        target = 38;   /* phone */
@@ -31,10 +32,11 @@ function pickLayout(vw, vh) {
   else if (vw < 1400)  target = 50;   /* small desktop */
   else                 target = 56;   /* large desktop */
 
-  let cols = Math.round(aw / target);
-  let rows = Math.round(ah / target);
-  cols = Math.max(5, Math.min(28, cols));
-  rows = Math.max(5, Math.min(24, rows));
+  /* Pick cols from width, derive rows so cells stay near-square.
+     This minimizes inscribed-bubble padding within cells. */
+  let cols = Math.max(5, Math.min(28, Math.round(aw / target)));
+  const cellSize = aw / cols;
+  let rows = Math.max(5, Math.min(24, Math.round(ah / cellSize)));
   return { cols, rows };
 }
 const SPECIAL_COLORS = ['red', 'blue', 'purple', 'pink', 'yellow'];
@@ -442,11 +444,11 @@ io.on('connection', socket => {
       scores: room.players.filter(p => p.active).map(({ num, score }) => ({ num, score })),
     });
 
-    /* Respawn — very fast so the board never empties */
-    const respawnChance = room.mode === 'multi' ? 0.70 : 0.60;
-    const respawnMin    = 350;
-    const respawnRange  = room.mode === 'multi' ? 1400 : 1800;
-    if (Math.random() < respawnChance && room.timer > 5) {
+    /* Respawn — extreme: board essentially never empties */
+    const respawnChance = room.mode === 'multi' ? 0.85 : 0.80;
+    const respawnMin    = 180;
+    const respawnRange  = room.mode === 'multi' ? 700 : 900;
+    if (Math.random() < respawnChance && room.timer > 4) {
       const delay = respawnMin + Math.floor(Math.random() * respawnRange);
       setTimeout(() => {
         if (!rooms.has(room.code)) return;
