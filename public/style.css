@@ -345,6 +345,10 @@ html, body {
 .target-line .hit { color: #4dff88; }
 .target-line .miss { color: #ff4d6d; }
 
+.end-actions {
+  display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: center;
+}
+
 /* Grid area */
 .grid-wrap {
   flex: 1; display: flex; align-items: center; justify-content: center;

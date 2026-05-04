@@ -224,6 +224,11 @@ document.getElementById('btn-end-back').addEventListener('click', () => {
   show('s-lobby');
 });
 
+document.getElementById('btn-replay').addEventListener('click', () => {
+  clearInterval(restartCdInterval);
+  socket.emit('replay');
+});
+
 document.getElementById('btn-chat').addEventListener('click', sendChat);
 document.getElementById('chat-inp').addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); });
 
@@ -447,17 +452,24 @@ socket.on('gameEnd', ({ results, mode, target, success, level, nextLevel, nextTa
 
   document.getElementById('chat-log').innerHTML = '';
   const restartRow = document.querySelector('.restart-row');
-  if (mode === 'single' && !nextLevel) {
-    /* terminal: no restart shown */
+  const replayBtn = document.getElementById('btn-replay');
+
+  /* Show REPLAY only on single-mode fail (not all-cleared) */
+  if (replayBtn) {
+    replayBtn.style.display = (mode === 'single' && !success && !allCleared) ? '' : 'none';
+  }
+
+  if (mode === 'single' && allCleared) {
+    /* terminal win — no auto-restart */
     if (restartRow) restartRow.style.display = 'none';
   } else {
     if (restartRow) restartRow.style.display = '';
-    let cd = (mode === 'single' && nextLevel) ? 6 : 15;
-    const cdLabel = document.querySelector('.restart-row');
-    if (cdLabel && mode === 'single' && nextLevel) {
-      cdLabel.innerHTML = `NEXT LEVEL IN <span id="restart-cd" class="cd-num">${cd}</span>s`;
-    } else if (cdLabel) {
-      cdLabel.innerHTML = `NEXT GAME IN <span id="restart-cd" class="cd-num">${cd}</span>s`;
+    let cd, label;
+    if (mode === 'single' && success && nextLevel) { cd = 6;  label = `NEXT LEVEL IN`; }
+    else if (mode === 'single' && !success)         { cd = 10; label = `RETRY LEVEL ${level} IN`; }
+    else                                            { cd = 15; label = `NEXT GAME IN`; }
+    if (restartRow) {
+      restartRow.innerHTML = `${label} <span id="restart-cd" class="cd-num">${cd}</span>s`;
     }
     restartCdInterval = setInterval(() => {
       cd--;

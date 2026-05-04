@@ -120,8 +120,15 @@ function startGame(code) {
       }
     }
 
-    /* Shimmer spawn — max SHIMMER_MAX per game */
-    if (room.shimmerCount < SHIMMER_MAX && Math.random() < 0.22 && normals.length > 0) {
+    /* Shimmer spawn — scales up from level 3+ in single mode */
+    let shimmerChance = 0.22;
+    let shimmerMax = SHIMMER_MAX;
+    if (room.mode === 'single' && room.level >= 3) {
+      const bump = room.level - 2;                   /* 1 at L3, 8 at L10 */
+      shimmerChance = Math.min(0.55, 0.22 + bump * 0.04);
+      shimmerMax    = Math.min(15,   SHIMMER_MAX + bump);
+    }
+    if (room.shimmerCount < shimmerMax && Math.random() < shimmerChance && normals.length > 0) {
       const idx = Math.floor(Math.random() * normals.length);
       normals[idx].color = 'shimmer';
       room.shimmerCount++;
@@ -165,9 +172,15 @@ function endGame(code) {
         if (!rooms.has(code)) return;
         startGame(code);
       }, 6000);
+    } else if (!success) {
+      /* failed — keep same level, auto-retry after 10s */
+      room.restartTimeout = setTimeout(() => {
+        if (!rooms.has(code)) return;
+        const r = rooms.get(code);
+        if (r.state === 'ended') startGame(code);
+      }, 10000);
     } else {
-      /* failed or all cleared — no auto-restart, reset level for next solo */
-      room.level = 1;
+      /* all cleared — keep level at MAX, no auto-restart */
     }
     return;
   }
@@ -246,6 +259,14 @@ io.on('connection', socket => {
     if (room.state === 'playing') return;
     const active = room.players.filter(p => p.active);
     if (active.length < 2) return;
+    startGame(room.code);
+  });
+
+  socket.on('replay', () => {
+    const room = rooms.get(socket.data.room);
+    if (!room || room.mode !== 'single') return;
+    if (room.state === 'playing') return;
+    clearTimeout(room.restartTimeout);
     startGame(room.code);
   });
 
