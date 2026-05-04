@@ -11,7 +11,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const rooms = new Map();
 
-const GAME_DURATION = 60;
+const GAME_DURATION = 90;
 const ROWS = 14;
 const COLS = 20;
 const TOTAL = ROWS * COLS;
