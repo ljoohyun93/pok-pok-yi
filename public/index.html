@@ -64,6 +64,13 @@
           ⏱ 30초 안에 ★ <b>850점</b> 도달! (LEVEL 1)
         </div>
       </div>
+
+      <div class="leaderboard">
+        <div class="lb-title">★ SOLO TOP 5 ★</div>
+        <ol id="lb-list" class="lb-list">
+          <li class="lb-empty">아직 기록 없음</li>
+        </ol>
+      </div>
     </div>
   </div>
 
@@ -144,6 +151,11 @@
           <input id="chat-inp" type="text" class="px-input" placeholder="메시지..." maxlength="60" autocomplete="off">
           <button id="btn-chat" class="px-btn accent small">SEND</button>
         </div>
+      </div>
+
+      <div id="end-leaderboard" class="leaderboard" style="display:none">
+        <div class="lb-title">★ SOLO TOP 5 ★</div>
+        <ol id="end-lb-list" class="lb-list"></ol>
       </div>
 
       <div class="end-actions">

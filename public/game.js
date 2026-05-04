@@ -439,6 +439,31 @@ socket.on('rowPopped', ({ direction, row, col, triggerId, num, chain, scores }) 
   });
 });
 
+/* ── Leaderboard rendering ── */
+let lastLeaderboard = [];
+
+function renderLeaderboard(target, board) {
+  if (!target) return;
+  if (!board || board.length === 0) {
+    target.innerHTML = '<li class="lb-empty">아직 기록 없음</li>';
+    return;
+  }
+  target.innerHTML = board.map((e, i) => {
+    const rank = ['🥇', '🥈', '🥉', '4', '5'][i] || (i + 1);
+    return `<li>` +
+      `<span class="lb-rank">${rank}</span>` +
+      `<span class="lb-nick">${escHtml(e.nickname)}</span>` +
+      `<span class="lb-lvl">L${e.level}</span>` +
+      `<span class="lb-sc">${e.score}</span>` +
+    `</li>`;
+  }).join('');
+}
+
+socket.on('leaderboardUpdate', (board) => {
+  lastLeaderboard = board || [];
+  renderLeaderboard(document.getElementById('lb-list'), lastLeaderboard);
+});
+
 socket.on('bubbleRespawned', ({ id }) => {
   if (!bubbles[id]) return;
   bubbles[id].popped = false;
@@ -462,7 +487,15 @@ socket.on('bubbleRespawned', ({ id }) => {
   setTimeout(() => fresh.classList.remove('respawning'), 450);
 });
 
-socket.on('gameEnd', ({ results, mode, target, success, level, nextLevel, nextTarget, allCleared }) => {
+socket.on('gameEnd', ({ results, mode, target, success, level, nextLevel, nextTarget, allCleared, leaderboard }) => {
+  /* Update lobby leaderboard cache + render to end screen */
+  if (leaderboard) {
+    lastLeaderboard = leaderboard;
+    renderLeaderboard(document.getElementById('lb-list'), leaderboard);
+    renderLeaderboard(document.getElementById('end-lb-list'), leaderboard);
+    const endLbBox = document.getElementById('end-leaderboard');
+    if (endLbBox) endLbBox.style.display = (mode === 'single') ? '' : 'none';
+  }
   clearInterval(restartCdInterval);
 
   const titleEl = document.querySelector('#s-end .end-title');

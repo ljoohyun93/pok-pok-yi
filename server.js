@@ -11,6 +11,30 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const rooms = new Map();
 
+/* Single-mode leaderboard: best (level, score) per nickname.
+   In-memory only; resets on server restart. */
+const leaderboard = [];
+
+function recordLeaderboard(nickname, level, score) {
+  if (!nickname) return;
+  const nick = String(nickname).slice(0, 12);
+  const idx = leaderboard.findIndex(e => e.nickname === nick);
+  if (idx >= 0) {
+    const ex = leaderboard[idx];
+    if (level > ex.level || (level === ex.level && score > ex.score)) {
+      ex.level = level; ex.score = score; ex.ts = Date.now();
+    }
+  } else {
+    leaderboard.push({ nickname: nick, level, score, ts: Date.now() });
+  }
+  leaderboard.sort((a, b) => b.level - a.level || b.score - a.score);
+  if (leaderboard.length > 50) leaderboard.length = 50;
+}
+
+function getTopLeaderboard(n = 5) {
+  return leaderboard.slice(0, n).map(({ nickname, level, score }) => ({ nickname, level, score }));
+}
+
 const GAME_DURATION = 90;
 const GAME_DURATION_SINGLE = 30;
 const SINGLE_TARGETS = [850, 1000, 1250, 1500, 1750, 2000, 2250, 2500, 2750, 3000];
@@ -258,6 +282,17 @@ function endGame(code) {
     payload.nextTarget = payload.nextLevel ? SINGLE_TARGETS[payload.nextLevel - 1] : null;
     payload.allCleared = success && lvl === SINGLE_MAX_LEVEL;
 
+    /* Record best result; if user just cleared L=lvl, store as L=lvl */
+    if (results.length > 0) {
+      const r = results[0];
+      const recordedLevel = success ? lvl : Math.max(1, lvl - 1); /* fail keeps prior cleared level */
+      /* Always record current (level, score) — best stays via upsert */
+      recordLeaderboard(r.nickname, success ? lvl : Math.max(1, lvl), r.score);
+    }
+    payload.leaderboard = getTopLeaderboard(5);
+    /* broadcast updated board to everyone */
+    io.emit('leaderboardUpdate', payload.leaderboard);
+
     io.to(code).emit('gameEnd', payload);
 
     if (success && lvl < SINGLE_MAX_LEVEL) {
@@ -290,6 +325,13 @@ function endGame(code) {
 }
 
 io.on('connection', socket => {
+  /* Send latest leaderboard immediately so lobby can show it */
+  socket.emit('leaderboardUpdate', getTopLeaderboard(5));
+
+  socket.on('getLeaderboard', () => {
+    socket.emit('leaderboardUpdate', getTopLeaderboard(5));
+  });
+
   socket.on('createRoom', ({ nickname, mode, viewportW, viewportH }) => {
     const safeMode = mode === 'single' ? 'single' : 'multi';
     const code = genCode();
@@ -470,15 +512,19 @@ io.on('connection', socket => {
       scores: room.players.filter(p => p.active).map(({ num, score }) => ({ num, score })),
     });
 
-    /* Respawn — base rate; L4+ in single mode adds 30% per level (faster) */
+    /* Respawn — base rate; single mode scales up by level
+       L4: 1.3x, L5+: +3x per level → L5:4, L6:7, L7:10, L8:13, L9:16, L10:19 */
     let respawnChance = room.mode === 'multi' ? 0.85 : 0.80;
     let respawnMin    = 180;
     let respawnRange  = room.mode === 'multi' ? 700 : 900;
-    if (room.mode === 'single' && (room.level || 1) >= 4) {
-      const boost = 1 + ((room.level - 3) * 0.30);  /* L4: 1.3x, L10: 3.1x */
-      respawnChance = Math.min(0.97, respawnChance * boost);
-      respawnMin    = Math.max(80, Math.round(respawnMin / boost));
-      respawnRange  = Math.max(150, Math.round(respawnRange / boost));
+    const lvlR = room.level || 1;
+    if (room.mode === 'single' && lvlR >= 4) {
+      let boost;
+      if (lvlR >= 5) boost = 1 + (lvlR - 4) * 3;
+      else           boost = 1.3;
+      respawnChance = boost >= 3 ? 0.99 : Math.min(0.97, respawnChance * boost);
+      respawnMin    = Math.max(40,  Math.round(respawnMin / boost));
+      respawnRange  = Math.max(80,  Math.round(respawnRange / boost));
     }
     if (Math.random() < respawnChance && room.timer > 4) {
       const delay = respawnMin + Math.floor(Math.random() * respawnRange);
