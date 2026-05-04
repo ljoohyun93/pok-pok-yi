@@ -13,9 +13,9 @@ const rooms = new Map();
 
 const GAME_DURATION = 90;
 const GAME_DURATION_SINGLE = 30;
-const SINGLE_TARGETS = [400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1400];
+const SINGLE_TARGETS = [600, 800, 1000, 1200, 1400, 1600, 1800, 2000, 2200, 2400];
 const SINGLE_MAX_LEVEL = 10;
-const SINGLE_LEVEL_MULT = [1.0, 1.15, 1.3, 1.45, 1.6, 1.75, 1.9, 2.05, 2.2, 2.4];
+const SINGLE_LEVEL_MULT = [1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4, 2.6, 2.8];
 const TOTAL_TARGET = 280;
 
 function pickLayout(vw, vh) {
