@@ -191,13 +191,18 @@ function startGame(code) {
       }
     }
 
-    /* Shimmer spawn — scales up from level 3+ in single mode */
+    /* Shimmer spawn — scales up from level 3+ in single mode.
+       L5+ gets an extra +10% absolute chance bump. */
     let shimmerChance = 0.22;
     let shimmerMax = SHIMMER_MAX;
     if (room.mode === 'single' && room.level >= 3) {
       const bump = room.level - 2;                   /* 1 at L3, 8 at L10 */
       shimmerChance = Math.min(0.55, 0.22 + bump * 0.04);
       shimmerMax    = Math.min(15,   SHIMMER_MAX + bump);
+      if (room.level >= 5) {
+        shimmerChance = Math.min(0.70, shimmerChance + 0.10);
+        shimmerMax    = Math.min(18,  shimmerMax + 2);
+      }
     }
     if (room.shimmerCount < shimmerMax && Math.random() < shimmerChance && normals.length > 0) {
       const idx = Math.floor(Math.random() * normals.length);
