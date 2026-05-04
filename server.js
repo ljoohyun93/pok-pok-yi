@@ -36,7 +36,7 @@ function pickLayout(vw, vh) {
      ceil(rows) so vertical fill is maximized; horizontal trims slightly. */
   let cols = Math.max(5, Math.min(28, Math.round(aw / target)));
   const cellSize = aw / cols;
-  let rows = Math.max(5, Math.min(28, Math.ceil(ah / cellSize) + 1));
+  let rows = Math.max(5, Math.min(30, Math.ceil(ah / cellSize) + 6));
   return { cols, rows };
 }
 const SPECIAL_COLORS = ['red', 'blue', 'purple', 'pink', 'yellow'];
