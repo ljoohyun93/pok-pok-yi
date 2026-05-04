@@ -9,11 +9,46 @@ const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, 'public')));
 
+const fs = require('fs');
+
 const rooms = new Map();
 
 /* Single-mode leaderboard: best (level, score) per nickname.
-   In-memory only; resets on server restart. */
+   Persisted to disk so it survives normal restarts. */
+const LB_FILE = path.join(__dirname, 'data', 'leaderboard.json');
 const leaderboard = [];
+
+function loadLeaderboardFromDisk() {
+  try {
+    if (fs.existsSync(LB_FILE)) {
+      const raw = fs.readFileSync(LB_FILE, 'utf8');
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) {
+        leaderboard.length = 0;
+        leaderboard.push(...arr);
+        console.log('[leaderboard] loaded', leaderboard.length, 'entries');
+      }
+    }
+  } catch (e) {
+    console.error('[leaderboard] load failed:', e.message);
+  }
+}
+
+let lbSaveTimer = null;
+function saveLeaderboardToDisk() {
+  clearTimeout(lbSaveTimer);
+  lbSaveTimer = setTimeout(() => {
+    try {
+      const dir = path.dirname(LB_FILE);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(LB_FILE, JSON.stringify(leaderboard));
+    } catch (e) {
+      console.error('[leaderboard] save failed:', e.message);
+    }
+  }, 400);
+}
+
+loadLeaderboardFromDisk();
 
 function recordLeaderboard(nickname, level, score) {
   if (!nickname) return;
@@ -29,6 +64,7 @@ function recordLeaderboard(nickname, level, score) {
   }
   leaderboard.sort((a, b) => b.level - a.level || b.score - a.score);
   if (leaderboard.length > 50) leaderboard.length = 50;
+  saveLeaderboardToDisk();
 }
 
 function getTopLeaderboard(n = 5) {
