@@ -348,6 +348,62 @@ socket.on('bubblePopped', ({ id, socketId, num, pts, color, scores: newScores })
   }
 });
 
+socket.on('bombPop', ({ triggerId, num, chain, scores }) => {
+  scores.forEach(s => updateScore(s.num, s.score));
+  document.body.classList.remove('shake');
+  void document.body.offsetWidth;
+  document.body.classList.add('shake');
+  setTimeout(() => document.body.classList.remove('shake'), 500);
+
+  /* trigger pops first */
+  bubbles[triggerId].popped = true;
+  bubbles[triggerId].poppedBy = num;
+  animatePop(triggerId, num, true);
+  playBoom();
+
+  /* cascade-pop the 10 random bubbles */
+  chain.forEach((item, i) => {
+    setTimeout(() => {
+      bubbles[item.id].popped = true;
+      bubbles[item.id].poppedBy = num;
+      animatePop(item.id, num, item.color !== 'normal');
+      if (i % 2 === 0) playPop();
+    }, 80 + i * 55);
+  });
+});
+
+socket.on('firePop', ({ triggerId, num, chain, scores }) => {
+  scores.forEach(s => updateScore(s.num, s.score));
+  showFireFrame();
+  playWhoosh();
+
+  bubbles[triggerId].popped = true;
+  bubbles[triggerId].poppedBy = num;
+  animatePop(triggerId, num, true);
+
+  /* perimeter cascade — order clockwise from top-left for sweep effect */
+  const sorted = [...chain].sort((a, b) => {
+    const ar = Math.floor(a.id / COLS), ac = a.id % COLS;
+    const br = Math.floor(b.id / COLS), bc = b.id % COLS;
+    /* clockwise rank */
+    const rank = (r, c) => {
+      if (r === 0)              return c;                              /* top L→R */
+      if (c === COLS - 1)       return COLS + r;                       /* right T→B */
+      if (r === ROWS - 1)       return COLS + ROWS + (COLS - 1 - c);   /* bottom R→L */
+      return COLS + ROWS + COLS + (ROWS - 1 - r);                       /* left B→T */
+    };
+    return rank(ar, ac) - rank(br, bc);
+  });
+  sorted.forEach((item, i) => {
+    setTimeout(() => {
+      bubbles[item.id].popped = true;
+      bubbles[item.id].poppedBy = num;
+      animatePop(item.id, num, item.color !== 'normal');
+      if (i % 3 === 0) playPop();
+    }, 60 + i * 22);
+  });
+});
+
 socket.on('rowPopped', ({ direction, row, col, triggerId, num, chain, scores }) => {
   scores.forEach(s => updateScore(s.num, s.score));
   showRowFlash(direction, row, col);
@@ -569,6 +625,7 @@ function bubbleClass(b) {
     red: 's-red', blue: 's-blue', purple: 's-purple',
     pink: 's-pink', yellow: 's-yellow',
     shimmer: 's-shimmer',
+    bomb: 's-bomb', fire: 's-fire',
   };
   return map[b.color] || 'normal';
 }
@@ -585,8 +642,8 @@ function onClickBubble(i) {
   const b = bubbles[i];
   if (b.popped) return;
 
-  /* Shimmer — let server orchestrate the chain; we just send & wait */
-  if (b.color === 'shimmer') {
+  /* Shimmer/Bomb/Fire — let server orchestrate; we just send & wait */
+  if (b.color === 'shimmer' || b.color === 'bomb' || b.color === 'fire') {
     socket.emit('popBubble', { id: i });
     return;
   }
@@ -647,6 +704,90 @@ function showRowFlash(direction, row, col) {
 
   document.body.appendChild(flash);
   setTimeout(() => flash.remove(), 620);
+}
+
+/* ── Fire frame burst around the grid ── */
+function showFireFrame() {
+  const grid = document.getElementById('bubble-grid');
+  if (!grid) return;
+  const rect = grid.getBoundingClientRect();
+  const frame = document.createElement('div');
+  frame.className = 'fire-frame';
+  frame.style.cssText = `
+    left:${rect.left - 14}px;
+    top:${rect.top - 14}px;
+    width:${rect.width + 28}px;
+    height:${rect.height + 28}px;
+  `;
+  document.body.appendChild(frame);
+  setTimeout(() => frame.remove(), 1300);
+}
+
+/* ── Boom sound for bomb ── */
+function playBoom() {
+  try {
+    const ctx = getAudioCtx();
+    const now = ctx.currentTime;
+    /* low frequency thump */
+    const o = ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(110, now);
+    o.frequency.exponentialRampToValueAtTime(28, now + 0.45);
+    const og = ctx.createGain();
+    og.gain.setValueAtTime(0.7, now);
+    og.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+    o.connect(og); og.connect(ctx.destination);
+    o.start(now); o.stop(now + 0.55);
+    /* noise burst */
+    const len = Math.floor(ctx.sampleRate * 0.32);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = (Math.random()*2-1) * Math.pow(1 - i/len, 2);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 1200;
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(0.55, now);
+    ng.gain.exponentialRampToValueAtTime(0.001, now + 0.32);
+    src.connect(lp); lp.connect(ng); ng.connect(ctx.destination);
+    src.start(now);
+  } catch (_) {}
+}
+
+/* ── Whoosh sound for fire ── */
+function playWhoosh() {
+  try {
+    const ctx = getAudioCtx();
+    const now = ctx.currentTime;
+    const len = Math.floor(ctx.sampleRate * 0.7);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = (Math.random()*2-1);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.setValueAtTime(450, now);
+    bp.frequency.exponentialRampToValueAtTime(2600, now + 0.55);
+    bp.Q.value = 4;
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(0, now);
+    ng.gain.linearRampToValueAtTime(0.45, now + 0.05);
+    ng.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
+    src.connect(bp); bp.connect(ng); ng.connect(ctx.destination);
+    src.start(now);
+    /* low crackle */
+    const o = ctx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(140, now);
+    o.frequency.exponentialRampToValueAtTime(70, now + 0.5);
+    const og = ctx.createGain();
+    og.gain.setValueAtTime(0.18, now);
+    og.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+    o.connect(og); og.connect(ctx.destination);
+    o.start(now); o.stop(now + 0.6);
+  } catch (_) {}
 }
 
 /* ── Magic chime for shimmer chain ── */

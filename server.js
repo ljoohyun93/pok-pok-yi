@@ -26,10 +26,10 @@ function pickLayout(vw, vh) {
   const ah = Math.max(vh - HUD_H - FOOTER_H, 260);
 
   let target;
-  if (vw < 500)        target = 62;   /* phone */
-  else if (vw < 900)   target = 68;   /* tablet */
-  else if (vw < 1400)  target = 72;   /* small desktop */
-  else                 target = 78;   /* large desktop */
+  if (vw < 500)        target = 38;   /* phone */
+  else if (vw < 900)   target = 44;   /* tablet */
+  else if (vw < 1400)  target = 50;   /* small desktop */
+  else                 target = 56;   /* large desktop */
 
   let cols = Math.round(aw / target);
   let rows = Math.round(ah / target);
@@ -42,6 +42,9 @@ const NORMAL_SCORE = 5;
 const SPECIAL_SCORE = 10;
 const SHIMMER_SCORE = 15;
 const SHIMMER_MAX = 6;
+const BOMB_BONUS = 20;
+const BOMB_BLAST_COUNT = 10;
+const FIRE_BONUS = 25;
 const ROOM_TTL = 30 * 60 * 1000;
 const MAX_PLAYERS = 4;
 
@@ -80,6 +83,9 @@ function startGame(code) {
   room.timer = room.mode === 'single' ? GAME_DURATION_SINGLE : GAME_DURATION;
   room.bubbles = makeBubbles(room.total);
   room.shimmerCount = 0;
+  room.bombCount = 0;
+  room.bombMax = room.mode === 'multi' ? 2 + Math.floor(Math.random() * 4) : 0; /* 2-5 */
+  room.fireSpawned = false;
   active.forEach(p => { p.score = 0; });
 
   io.to(code).emit('gameStart', {
@@ -104,7 +110,8 @@ function startGame(code) {
     const unpopped = room.bubbles.filter(b => !b.popped);
 
     unpopped.forEach(b => {
-      if (b.color !== 'normal' && b.color !== 'shimmer' && Math.random() < 0.45) b.color = 'normal';
+      if (b.color !== 'normal' && b.color !== 'shimmer' && b.color !== 'bomb' && b.color !== 'fire'
+          && Math.random() < 0.45) b.color = 'normal';
     });
 
     const normals = unpopped.filter(b => b.color === 'normal');
@@ -131,7 +138,24 @@ function startGame(code) {
     if (room.shimmerCount < shimmerMax && Math.random() < shimmerChance && normals.length > 0) {
       const idx = Math.floor(Math.random() * normals.length);
       normals[idx].color = 'shimmer';
+      normals.splice(idx, 1);
       room.shimmerCount++;
+    }
+
+    /* Multi-only: BOMB (2-5 per game) and FIRE (1 per game) */
+    if (room.mode === 'multi') {
+      if (room.bombCount < room.bombMax && Math.random() < 0.10 && normals.length > 0) {
+        const idx = Math.floor(Math.random() * normals.length);
+        normals[idx].color = 'bomb';
+        normals.splice(idx, 1);
+        room.bombCount++;
+      }
+      if (!room.fireSpawned && Math.random() < 0.05 && normals.length > 0) {
+        const idx = Math.floor(Math.random() * normals.length);
+        normals[idx].color = 'fire';
+        normals.splice(idx, 1);
+        room.fireSpawned = true;
+      }
     }
 
     io.to(code).emit('bubblesUpdate', room.bubbles);
@@ -280,6 +304,59 @@ io.on('connection', socket => {
     if (!player) return;
 
     const color = bubble.color;
+
+    /* ── Bomb: explode 10 random unpopped bubbles ── */
+    if (color === 'bomb') {
+      bubble.popped = true;
+      player.score += BOMB_BONUS;
+      const candidates = room.bubbles.filter(b => !b.popped);
+      const chain = [];
+      const n = Math.min(BOMB_BLAST_COUNT, candidates.length);
+      for (let i = 0; i < n; i++) {
+        const idx = Math.floor(Math.random() * candidates.length);
+        const b = candidates.splice(idx, 1)[0];
+        b.popped = true;
+        const c2 = b.color;
+        const p = c2 === 'shimmer' ? SHIMMER_SCORE
+                : c2 === 'normal'  ? NORMAL_SCORE
+                : c2 === 'bomb' || c2 === 'fire' ? 0
+                : SPECIAL_SCORE;
+        player.score += p;
+        chain.push({ id: b.id, color: c2, pts: p });
+      }
+      io.to(socket.data.room).emit('bombPop', {
+        triggerId: id, num: player.num, chain, bonus: BOMB_BONUS,
+        scores: room.players.filter(p => p.active).map(({ num, score }) => ({ num, score })),
+      });
+      return;
+    }
+
+    /* ── Fire: pop entire perimeter ── */
+    if (color === 'fire') {
+      bubble.popped = true;
+      player.score += FIRE_BONUS;
+      const C = room.cols, R = room.rows;
+      const chain = [];
+      for (let i = 0; i < room.bubbles.length; i++) {
+        const b = room.bubbles[i];
+        if (b.popped) continue;
+        const r = Math.floor(i / C), c = i % C;
+        if (r === 0 || r === R - 1 || c === 0 || c === C - 1) {
+          b.popped = true;
+          const c2 = b.color;
+          const p = c2 === 'shimmer' ? SHIMMER_SCORE
+                  : c2 === 'normal'  ? NORMAL_SCORE
+                  : SPECIAL_SCORE;
+          player.score += p;
+          chain.push({ id: i, color: c2, pts: p });
+        }
+      }
+      io.to(socket.data.room).emit('firePop', {
+        triggerId: id, num: player.num, chain, bonus: FIRE_BONUS,
+        scores: room.players.filter(p => p.active).map(({ num, score }) => ({ num, score })),
+      });
+      return;
+    }
 
     /* ── Shimmer: chain pop the entire row OR column at random ── */
     if (color === 'shimmer') {
