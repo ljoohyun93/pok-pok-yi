@@ -13,7 +13,7 @@ const rooms = new Map();
 
 const GAME_DURATION = 90;
 const GAME_DURATION_SINGLE = 30;
-const SINGLE_TARGETS = [600, 800, 1000, 1200, 1400, 1600, 1800, 2000, 2200, 2400];
+const SINGLE_TARGETS = [850, 1000, 1250, 1500, 1750, 2000, 2250, 2500, 2750, 3000];
 const SINGLE_MAX_LEVEL = 10;
 const SINGLE_LEVEL_MULT = [1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4, 2.6, 2.8];
 /* Pick layout based on a target bubble size (px).
@@ -96,39 +96,58 @@ function startGame(code) {
   room.bubbles = makeBubbles(room.total);
   room.shimmerCount = 0;
   room.bombCount = 0;
-  room.bombMax = room.mode === 'multi' ? 2 + Math.floor(Math.random() * 4) : 0; /* 2-5 */
+  /* Bombs/fire: multi always; single from L3+, with L4+ getting more bombs */
+  const lvl = room.level || 1;
+  const bombsEnabled = room.mode === 'multi' || (room.mode === 'single' && lvl >= 3);
+  const fireEnabled  = room.mode === 'multi' || (room.mode === 'single' && lvl >= 3);
+  if (bombsEnabled) {
+    const baseBombs = 2 + Math.floor(Math.random() * 4); /* 2-5 */
+    const bonusFromLevel = (room.mode === 'single' && lvl >= 4) ? Math.round((lvl - 3) * 1.0) : 0;
+    room.bombMax = Math.min(12, baseBombs + bonusFromLevel);
+  } else {
+    room.bombMax = 0;
+  }
+  room.fireEnabled = fireEnabled;
   room.fireSpawned = false;
   if (room.bombTimeouts) room.bombTimeouts.forEach(clearTimeout);
   room.bombTimeouts = [];
   clearTimeout(room.fireTimeout);
   room.fireTimeout = null;
 
-  /* ── Multi only: schedule guaranteed bomb/fire spawns ── */
-  if (room.mode === 'multi') {
-    const dur = GAME_DURATION * 1000;
-    /* Fire (exactly 1) — appears between 12s and (dur-15)s */
-    const fireDelay = 12000 + Math.floor(Math.random() * Math.max(1, dur - 27000));
-    room.fireTimeout = setTimeout(() => {
-      if (!rooms.has(code) || room.state !== 'playing' || room.fireSpawned) return;
-      const cands = room.bubbles.filter(b => !b.popped && b.color === 'normal');
-      if (!cands.length) return;
-      cands[Math.floor(Math.random() * cands.length)].color = 'fire';
-      room.fireSpawned = true;
-      io.to(code).emit('bubblesUpdate', room.bubbles);
-    }, fireDelay);
+  /* ── Schedule guaranteed bomb/fire spawns ── */
+  if (bombsEnabled || fireEnabled) {
+    const dur = room.timer * 1000;
+    /* Higher level (single) = earlier and more frequent */
+    const lvlBoost = (room.mode === 'single' && lvl >= 4) ? Math.min(2, 1 + (lvl - 3) * 0.3) : 1;
+    const earlyOffset = Math.round(2000 / lvlBoost);  /* L4: 1538ms, L10: 1000ms */
 
-    /* Bombs (2-5) — staggered between 4s and (dur-10)s */
-    for (let i = 0; i < room.bombMax; i++) {
-      const delay = 4000 + Math.floor(Math.random() * Math.max(1, dur - 14000));
-      const t = setTimeout(() => {
-        if (!rooms.has(code) || room.state !== 'playing') return;
+    if (fireEnabled) {
+      const fireDelay = earlyOffset + Math.floor(Math.random() * Math.max(1, dur - earlyOffset - 5000));
+      room.fireTimeout = setTimeout(() => {
+        if (!rooms.has(code) || room.state !== 'playing' || room.fireSpawned) return;
         const cands = room.bubbles.filter(b => !b.popped && b.color === 'normal');
         if (!cands.length) return;
-        cands[Math.floor(Math.random() * cands.length)].color = 'bomb';
-        room.bombCount++;
+        cands[Math.floor(Math.random() * cands.length)].color = 'fire';
+        room.fireSpawned = true;
         io.to(code).emit('bubblesUpdate', room.bubbles);
-      }, delay);
-      room.bombTimeouts.push(t);
+      }, fireDelay);
+    }
+
+    /* Bombs — stagger across the game; lvlBoost shrinks the time window */
+    if (bombsEnabled) {
+      const window = Math.max(1, dur - earlyOffset - 4000);
+      for (let i = 0; i < room.bombMax; i++) {
+        const delay = earlyOffset + Math.floor(Math.random() * window);
+        const t = setTimeout(() => {
+          if (!rooms.has(code) || room.state !== 'playing') return;
+          const cands = room.bubbles.filter(b => !b.popped && b.color === 'normal');
+          if (!cands.length) return;
+          cands[Math.floor(Math.random() * cands.length)].color = 'bomb';
+          room.bombCount++;
+          io.to(code).emit('bubblesUpdate', room.bubbles);
+        }, delay);
+        room.bombTimeouts.push(t);
+      }
     }
   }
   active.forEach(p => { p.score = 0; });
@@ -187,8 +206,10 @@ function startGame(code) {
       room.shimmerCount++;
     }
 
-    /* Multi-only: BOMB (2-5 per game) and FIRE (1 per game) */
-    if (room.mode === 'multi') {
+    /* Bomb/Fire random spawn fallback (also handles past-deadline jitter) */
+    const lvl2 = room.level || 1;
+    const allowExtras = (room.mode === 'multi') || (room.mode === 'single' && lvl2 >= 3);
+    if (allowExtras) {
       if (room.bombCount < room.bombMax && Math.random() < 0.10 && normals.length > 0) {
         const idx = Math.floor(Math.random() * normals.length);
         normals[idx].color = 'bomb';
@@ -444,10 +465,16 @@ io.on('connection', socket => {
       scores: room.players.filter(p => p.active).map(({ num, score }) => ({ num, score })),
     });
 
-    /* Respawn — extreme: board essentially never empties */
-    const respawnChance = room.mode === 'multi' ? 0.85 : 0.80;
-    const respawnMin    = 180;
-    const respawnRange  = room.mode === 'multi' ? 700 : 900;
+    /* Respawn — base rate; L4+ in single mode adds 30% per level (faster) */
+    let respawnChance = room.mode === 'multi' ? 0.85 : 0.80;
+    let respawnMin    = 180;
+    let respawnRange  = room.mode === 'multi' ? 700 : 900;
+    if (room.mode === 'single' && (room.level || 1) >= 4) {
+      const boost = 1 + ((room.level - 3) * 0.30);  /* L4: 1.3x, L10: 3.1x */
+      respawnChance = Math.min(0.97, respawnChance * boost);
+      respawnMin    = Math.max(80, Math.round(respawnMin / boost));
+      respawnRange  = Math.max(150, Math.round(respawnRange / boost));
+    }
     if (Math.random() < respawnChance && room.timer > 4) {
       const delay = respawnMin + Math.floor(Math.random() * respawnRange);
       setTimeout(() => {
