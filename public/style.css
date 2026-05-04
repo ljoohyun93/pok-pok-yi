@@ -511,8 +511,47 @@ html, body {
   100% { opacity: 0; transform: scaleY(1); }
 }
 
+/* NEON PINK (light pink) */
+.bubble.s-pink {
+  background: radial-gradient(circle at 50% 50%,
+    rgba(255,220,240,0.55) 0%,
+    rgba(255,170,210,0.55) 35%,
+    rgba(255,120,190,0.6)  70%,
+    rgba(230,80,160,0.7)   92%,
+    rgba(170,40,110,0.78) 100%);
+  border: 1.5px solid rgba(40,0,25,0.55);
+  box-shadow:
+    inset 0 -6px 11px rgba(120,30,80,0.45),
+    inset 0 5px 9px rgba(255,255,255,0.4),
+    1px 2px 5px rgba(0,0,0,0.55),
+    0 0 14px rgba(255,150,210,0.95),
+    0 0 30px rgba(255,150,210,0.55),
+    0 0 60px rgba(255,150,210,0.3);
+  animation: specialPulse 1.1s ease-in-out infinite;
+}
+
+/* NEON YELLOW */
+.bubble.s-yellow {
+  background: radial-gradient(circle at 50% 50%,
+    rgba(255,250,200,0.55) 0%,
+    rgba(255,235,80,0.6)   35%,
+    rgba(255,210,30,0.65)  70%,
+    rgba(220,170,0,0.7)    92%,
+    rgba(160,120,0,0.78)  100%);
+  border: 1.5px solid rgba(40,30,0,0.55);
+  box-shadow:
+    inset 0 -6px 11px rgba(80,60,0,0.45),
+    inset 0 5px 9px rgba(255,255,220,0.45),
+    1px 2px 5px rgba(0,0,0,0.55),
+    0 0 14px rgba(255,230,60,0.95),
+    0 0 30px rgba(255,230,60,0.55),
+    0 0 60px rgba(255,230,60,0.3);
+  animation: specialPulse 1.1s ease-in-out infinite;
+}
+
 /* Shared neon highlights for specials — same dome geometry as normal */
 .bubble.s-red::before, .bubble.s-blue::before, .bubble.s-purple::before,
+.bubble.s-pink::before, .bubble.s-yellow::before,
 .bubble.s-green::before {
   content: ''; position: absolute;
   top: 12%; left: 18%; width: 38%; height: 26%;
@@ -525,6 +564,7 @@ html, body {
   pointer-events: none; filter: blur(0.6px);
 }
 .bubble.s-red::after, .bubble.s-blue::after, .bubble.s-purple::after,
+.bubble.s-pink::after, .bubble.s-yellow::after,
 .bubble.s-green::after {
   content: ''; position: absolute;
   top: 64%; left: 60%; width: 16%; height: 12%;

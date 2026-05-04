@@ -16,21 +16,28 @@ const GAME_DURATION_SINGLE = 30;
 const SINGLE_TARGETS = [600, 800, 1000, 1200, 1400, 1600, 1800, 2000, 2200, 2400];
 const SINGLE_MAX_LEVEL = 10;
 const SINGLE_LEVEL_MULT = [1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4, 2.6, 2.8];
-const TOTAL_TARGET = 280;
-
+/* Pick layout based on a target bubble size (px).
+   This guarantees the grid fills the screen and bubbles look proportional
+   on phones, tablets, and desktops. */
 function pickLayout(vw, vh) {
-  const HUD_H = 110;
-  const FOOTER_H = 36;
-  const aw = Math.max(vw - 8, 320);
-  const ah = Math.max(vh - HUD_H - FOOTER_H, 280);
-  const ratio = aw / ah;
-  let cols = Math.round(Math.sqrt(TOTAL_TARGET * ratio));
-  cols = Math.max(8, Math.min(28, cols));
-  let rows = Math.round(TOTAL_TARGET / cols);
-  rows = Math.max(6, Math.min(22, rows));
+  const HUD_H = 120;
+  const FOOTER_H = 38;
+  const aw = Math.max(vw - 6, 320);
+  const ah = Math.max(vh - HUD_H - FOOTER_H, 260);
+
+  let target;
+  if (vw < 500)        target = 62;   /* phone */
+  else if (vw < 900)   target = 68;   /* tablet */
+  else if (vw < 1400)  target = 72;   /* small desktop */
+  else                 target = 78;   /* large desktop */
+
+  let cols = Math.round(aw / target);
+  let rows = Math.round(ah / target);
+  cols = Math.max(5, Math.min(28, cols));
+  rows = Math.max(5, Math.min(24, rows));
   return { cols, rows };
 }
-const SPECIAL_COLORS = ['red', 'blue', 'purple'];
+const SPECIAL_COLORS = ['red', 'blue', 'purple', 'pink', 'yellow'];
 const NORMAL_SCORE = 5;
 const SPECIAL_SCORE = 10;
 const SHIMMER_SCORE = 15;
@@ -109,7 +116,7 @@ function startGame(code) {
     for (let i = 0; i < n; i++) {
       const idx = Math.floor(Math.random() * normals.length);
       if (normals[idx]) {
-        normals.splice(idx, 1)[0].color = SPECIAL_COLORS[Math.floor(Math.random() * 3)];
+        normals.splice(idx, 1)[0].color = SPECIAL_COLORS[Math.floor(Math.random() * SPECIAL_COLORS.length)];
       }
     }
 

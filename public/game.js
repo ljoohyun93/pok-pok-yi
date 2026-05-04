@@ -22,8 +22,27 @@ let currentMode = 'multi';
 /* ── Audio ── */
 function getAudioCtx() {
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
   return audioCtx;
 }
+
+/* iOS Safari blocks Web Audio until first user gesture.
+   Unlock on the first touch/click anywhere. */
+function unlockAudio() {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    /* Play a silent buffer to fully unlock */
+    const buf = audioCtx.createBuffer(1, 1, 22050);
+    const src = audioCtx.createBufferSource();
+    src.buffer = buf;
+    src.connect(audioCtx.destination);
+    src.start(0);
+  } catch (_) {}
+}
+['touchstart', 'touchend', 'mousedown', 'click'].forEach(ev => {
+  document.addEventListener(ev, unlockAudio, { once: true, passive: true });
+});
 
 /* Realistic bubble-wrap pop using filtered noise burst */
 function playPop() {
@@ -534,8 +553,10 @@ window.addEventListener('resize', fitGrid);
 function bubbleClass(b) {
   if (b.popped) return 'popped' + (b.poppedBy ? ` by-p${b.poppedBy}` : '');
   const map = {
-    normal: 'normal', red: 's-red', blue: 's-blue',
-    purple: 's-purple', shimmer: 's-shimmer',
+    normal: 'normal',
+    red: 's-red', blue: 's-blue', purple: 's-purple',
+    pink: 's-pink', yellow: 's-yellow',
+    shimmer: 's-shimmer',
   };
   return map[b.color] || 'normal';
 }
