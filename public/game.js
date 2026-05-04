@@ -19,20 +19,16 @@ let audioCtx = null;
 let selectedMode = 'multi';
 let currentMode = 'multi';
 
-/* ── Audio ── */
-function getAudioCtx() {
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
-  return audioCtx;
-}
-
-/* iOS Safari blocks Web Audio until first user gesture.
-   Unlock on the first touch/click anywhere. */
+/* ── Audio (with iOS unlock, idempotent, runs every gesture) ── */
 function unlockAudio() {
   try {
-    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state === 'suspended') audioCtx.resume();
-    /* Play a silent buffer to fully unlock */
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
+      audioCtx.resume().catch(() => {});
+    }
+    /* Silent buffer keeps the audio path open on iOS */
     const buf = audioCtx.createBuffer(1, 1, 22050);
     const src = audioCtx.createBufferSource();
     src.buffer = buf;
@@ -40,8 +36,16 @@ function unlockAudio() {
     src.start(0);
   } catch (_) {}
 }
-['touchstart', 'touchend', 'mousedown', 'click'].forEach(ev => {
-  document.addEventListener(ev, unlockAudio, { once: true, passive: true });
+function getAudioCtx() {
+  if (!audioCtx) unlockAudio();
+  if (audioCtx && (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted')) {
+    audioCtx.resume().catch(() => {});
+  }
+  return audioCtx;
+}
+/* Attach unlock listeners — NOT once:true so a missed first tap is recoverable */
+['touchstart', 'touchend', 'mousedown', 'click', 'keydown'].forEach(ev => {
+  document.addEventListener(ev, unlockAudio, { passive: true, capture: true });
 });
 
 /* Realistic bubble-wrap pop using filtered noise burst */

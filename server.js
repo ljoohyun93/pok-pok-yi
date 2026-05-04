@@ -66,6 +66,8 @@ function clearTimers(room) {
   clearInterval(room.specialInterval);
   clearTimeout(room.restartTimeout);
   clearTimeout(room.expireTimeout);
+  if (room.bombTimeouts) { room.bombTimeouts.forEach(clearTimeout); room.bombTimeouts = []; }
+  clearTimeout(room.fireTimeout);
 }
 
 function startGame(code) {
@@ -86,6 +88,39 @@ function startGame(code) {
   room.bombCount = 0;
   room.bombMax = room.mode === 'multi' ? 2 + Math.floor(Math.random() * 4) : 0; /* 2-5 */
   room.fireSpawned = false;
+  if (room.bombTimeouts) room.bombTimeouts.forEach(clearTimeout);
+  room.bombTimeouts = [];
+  clearTimeout(room.fireTimeout);
+  room.fireTimeout = null;
+
+  /* ── Multi only: schedule guaranteed bomb/fire spawns ── */
+  if (room.mode === 'multi') {
+    const dur = GAME_DURATION * 1000;
+    /* Fire (exactly 1) — appears between 12s and (dur-15)s */
+    const fireDelay = 12000 + Math.floor(Math.random() * Math.max(1, dur - 27000));
+    room.fireTimeout = setTimeout(() => {
+      if (!rooms.has(code) || room.state !== 'playing' || room.fireSpawned) return;
+      const cands = room.bubbles.filter(b => !b.popped && b.color === 'normal');
+      if (!cands.length) return;
+      cands[Math.floor(Math.random() * cands.length)].color = 'fire';
+      room.fireSpawned = true;
+      io.to(code).emit('bubblesUpdate', room.bubbles);
+    }, fireDelay);
+
+    /* Bombs (2-5) — staggered between 4s and (dur-10)s */
+    for (let i = 0; i < room.bombMax; i++) {
+      const delay = 4000 + Math.floor(Math.random() * Math.max(1, dur - 14000));
+      const t = setTimeout(() => {
+        if (!rooms.has(code) || room.state !== 'playing') return;
+        const cands = room.bubbles.filter(b => !b.popped && b.color === 'normal');
+        if (!cands.length) return;
+        cands[Math.floor(Math.random() * cands.length)].color = 'bomb';
+        room.bombCount++;
+        io.to(code).emit('bubblesUpdate', room.bubbles);
+      }, delay);
+      room.bombTimeouts.push(t);
+    }
+  }
   active.forEach(p => { p.score = 0; });
 
   io.to(code).emit('gameStart', {
@@ -406,13 +441,16 @@ io.on('connection', socket => {
       scores: room.players.filter(p => p.active).map(({ num, score }) => ({ num, score })),
     });
 
-    /* 20% chance to respawn within 10s — only if game still has > 10s left */
-    if (Math.random() < 0.20 && room.timer > 10) {
-      const delay = 2000 + Math.floor(Math.random() * 7000);
+    /* Respawn — fast for both modes; multi slightly faster */
+    const respawnChance = room.mode === 'multi' ? 0.50 : 0.40;
+    const respawnMin    = room.mode === 'multi' ? 700  : 900;
+    const respawnRange  = room.mode === 'multi' ? 3000 : 4000;
+    if (Math.random() < respawnChance && room.timer > 6) {
+      const delay = respawnMin + Math.floor(Math.random() * respawnRange);
       setTimeout(() => {
         if (!rooms.has(room.code)) return;
         if (room.state !== 'playing') return;
-        if (room.timer <= 10) return;
+        if (room.timer <= 4) return;
         if (!bubble.popped) return;
         bubble.popped = false;
         bubble.color = 'normal';
