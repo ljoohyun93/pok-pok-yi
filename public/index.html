@@ -33,19 +33,33 @@
 
       <div class="lobby-card">
         <div class="field-group">
+          <label class="field-label">▸ MODE</label>
+          <div class="mode-toggle">
+            <button class="mode-btn active" data-mode="multi">MULTIPLE</button>
+            <button class="mode-btn" data-mode="single">SINGLE</button>
+          </div>
+        </div>
+
+        <div class="field-group">
           <label class="field-label">▸ NICKNAME</label>
           <input id="inp-nick" type="text" class="px-input" placeholder="닉네임 입력..." maxlength="10" autocomplete="off">
         </div>
 
         <button id="btn-create" class="px-btn primary full">
-          ◉ &nbsp; CREATE ROOM
+          ◉ &nbsp; <span id="create-label">CREATE ROOM</span>
         </button>
 
-        <div class="or-divider"><span>── OR ──</span></div>
+        <div id="multi-extra">
+          <div class="or-divider"><span>── OR ──</span></div>
 
-        <div class="join-row">
-          <input id="inp-code" type="text" class="px-input code-input" placeholder="ROOM CODE" maxlength="6" autocomplete="off" style="text-transform:uppercase">
-          <button id="btn-join" class="px-btn secondary">JOIN ▶</button>
+          <div class="join-row">
+            <input id="inp-code" type="text" class="px-input code-input" placeholder="ROOM CODE" maxlength="6" autocomplete="off" style="text-transform:uppercase">
+            <button id="btn-join" class="px-btn secondary">JOIN ▶</button>
+          </div>
+        </div>
+
+        <div id="single-info" class="single-info" style="display:none">
+          ⏱ 30초 안에 ★ <b>400점</b> 도달!
         </div>
       </div>
     </div>
@@ -60,6 +74,8 @@
       <button id="btn-copy" class="px-btn accent small">⧉ COPY CODE</button>
       <div id="copy-ok" class="copy-ok">✔ COPIED!</div>
       <div id="wait-players" class="wait-players"></div>
+      <div id="wait-count" class="wait-count">PLAYERS 1 / 4</div>
+      <button id="btn-start" class="px-btn primary" style="display:none">▶ START GAME</button>
       <div class="dot-loader"><span></span><span></span><span></span><span></span></div>
       <button id="btn-wait-back" class="px-btn ghost small">◄ BACK</button>
     </div>
@@ -68,20 +84,29 @@
   <!-- ===== GAME ===== -->
   <div id="s-game" class="screen">
     <div class="game-hud">
-      <div class="hud-player" id="hud-p1">
-        <div class="hud-nick p1" id="nick-p1">P1</div>
-        <div class="hud-score" id="sc-p1">0</div>
+      <div class="hud-info">
+        <span class="hud-title">POK POK YI</span>
+        <span class="hud-timer" id="game-timer">60</span>
+        <span class="hud-room" id="hud-room-info">ROOM: <span id="hud-room-code"></span></span>
+        <span class="hud-level" id="hud-level" style="display:none">LEVEL <b id="lvl-num">1</b> · ★ <b id="lvl-target">400</b></span>
       </div>
-
-      <div class="hud-center">
-        <div class="hud-title">POK POK YI</div>
-        <div class="hud-timer" id="game-timer">60</div>
-        <div class="hud-room">ROOM: <span id="hud-room-code"></span></div>
-      </div>
-
-      <div class="hud-player" id="hud-p2">
-        <div class="hud-nick p2" id="nick-p2">P2</div>
-        <div class="hud-score" id="sc-p2">0</div>
+      <div class="hud-players">
+        <div class="chip p1" id="chip-p1">
+          <span class="chip-nick" id="nick-p1">P1</span>
+          <span class="chip-score" id="sc-p1">0</span>
+        </div>
+        <div class="chip p2" id="chip-p2">
+          <span class="chip-nick" id="nick-p2">P2</span>
+          <span class="chip-score" id="sc-p2">0</span>
+        </div>
+        <div class="chip p3" id="chip-p3" style="display:none">
+          <span class="chip-nick" id="nick-p3">P3</span>
+          <span class="chip-score" id="sc-p3">0</span>
+        </div>
+        <div class="chip p4" id="chip-p4" style="display:none">
+          <span class="chip-nick" id="nick-p4">P4</span>
+          <span class="chip-score" id="sc-p4">0</span>
+        </div>
       </div>
     </div>
 

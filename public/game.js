@@ -4,18 +4,20 @@
 
 const socket = io();
 
-const COLS = 20;
-const ROWS = 14;
+let COLS = 20;
+let ROWS = 14;
 
 /* ── State ── */
 let mySocketId = null;
 let myNum = 0;
 let roomCode = '';
 let bubbles = [];
-let scores = { 1: 0, 2: 0 };
-let nicks = { 1: 'P1', 2: 'P2' };
+let scores = { 1: 0, 2: 0, 3: 0, 4: 0 };
+let nicks = { 1: 'P1', 2: 'P2', 3: 'P3', 4: 'P4' };
 let restartCdInterval = null;
 let audioCtx = null;
+let selectedMode = 'multi';
+let currentMode = 'multi';
 
 /* ── Audio ── */
 function getAudioCtx() {
@@ -140,10 +142,27 @@ function toast(msg) {
 }
 
 /* ── Lobby ── */
+document.querySelectorAll('.mode-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    selectedMode = btn.dataset.mode;
+    document.getElementById('multi-extra').style.display = selectedMode === 'single' ? 'none' : '';
+    document.getElementById('single-info').style.display = selectedMode === 'single' ? 'block' : 'none';
+    document.getElementById('create-label').textContent =
+      selectedMode === 'single' ? 'START SOLO' : 'CREATE ROOM';
+  });
+});
+
 document.getElementById('btn-create').addEventListener('click', () => {
   const nick = document.getElementById('inp-nick').value.trim();
   if (!nick) { toast('닉네임을 입력해주세요!'); return; }
-  socket.emit('createRoom', { nickname: nick });
+  socket.emit('createRoom', {
+    nickname: nick,
+    mode: selectedMode,
+    viewportW: window.innerWidth,
+    viewportH: window.innerHeight,
+  });
 });
 
 document.getElementById('btn-join').addEventListener('click', doJoin);
@@ -199,12 +218,23 @@ function sendChat() {
 /* ── Socket events ── */
 socket.on('connect', () => { mySocketId = socket.id; });
 
-socket.on('roomCreated', ({ code, num }) => {
+socket.on('roomCreated', ({ code, num, mode }) => {
   roomCode = code;
   myNum = num;
+  currentMode = mode || 'multi';
+  if (currentMode === 'single') {
+    /* skip waiting screen — game will start immediately via gameStart */
+    return;
+  }
   document.getElementById('disp-code').textContent = code;
   document.getElementById('wait-players').textContent = `★  ${document.getElementById('inp-nick').value.trim()} (YOU)`;
+  document.getElementById('wait-count').textContent = 'PLAYERS 1 / 4';
+  document.getElementById('btn-start').style.display = 'none';
   show('s-waiting');
+});
+
+document.getElementById('btn-start').addEventListener('click', () => {
+  socket.emit('startGame');
 });
 
 socket.on('roomJoined', ({ code, num }) => {
@@ -221,18 +251,48 @@ socket.on('playerJoined', ({ players }) => {
       `★  ${p.nickname}${p.num === myNum ? ' (YOU)' : ''}`
     ).join('\n');
   }
+  const cnt = document.getElementById('wait-count');
+  if (cnt) cnt.textContent = `PLAYERS ${players.length} / 4`;
+  const startBtn = document.getElementById('btn-start');
+  if (startBtn) startBtn.style.display = players.length >= 2 ? '' : 'none';
 });
 
-socket.on('gameStart', ({ bubbles: serverBubbles, players, timer }) => {
+socket.on('gameStart', ({ bubbles: serverBubbles, players, timer, mode, target, cols, rows, level }) => {
   bubbles = serverBubbles;
-  scores = { 1: 0, 2: 0 };
+  if (cols) COLS = cols;
+  if (rows) ROWS = rows;
+  scores = { 1: 0, 2: 0, 3: 0, 4: 0 };
+  currentMode = mode || 'multi';
 
+  const levelEl = document.getElementById('hud-level');
+  const roomEl = document.getElementById('hud-room-info');
+  if (mode === 'single') {
+    levelEl.style.display = '';
+    roomEl.style.display = 'none';
+    document.getElementById('lvl-num').textContent = level || 1;
+    document.getElementById('lvl-target').textContent = target || 400;
+  } else {
+    levelEl.style.display = 'none';
+    roomEl.style.display = '';
+  }
+
+  /* clear nick map but preserve player labels */
   players.forEach(p => { nicks[p.num] = p.nickname; });
 
-  document.getElementById('nick-p1').textContent = nicks[1] || 'P1';
-  document.getElementById('nick-p2').textContent = nicks[2] || 'P2';
-  document.getElementById('sc-p1').textContent = '0';
-  document.getElementById('sc-p2').textContent = '0';
+  /* show/hide chips based on player count */
+  const presentNums = new Set(players.map(p => p.num));
+  for (let n = 1; n <= 4; n++) {
+    const chip = document.getElementById(`chip-p${n}`);
+    if (!chip) continue;
+    if (presentNums.has(n)) {
+      chip.style.display = '';
+      document.getElementById(`nick-p${n}`).textContent = nicks[n] || `P${n}`;
+      document.getElementById(`sc-p${n}`).textContent = '0';
+    } else {
+      chip.style.display = 'none';
+    }
+  }
+
   document.getElementById('hud-room-code').textContent = roomCode;
   setTimer(timer);
 
@@ -318,29 +378,75 @@ socket.on('bubbleRespawned', ({ id }) => {
   setTimeout(() => fresh.classList.remove('respawning'), 450);
 });
 
-socket.on('gameEnd', ({ results }) => {
+socket.on('gameEnd', ({ results, mode, target, success, level, nextLevel, nextTarget, allCleared }) => {
   clearInterval(restartCdInterval);
+
+  const titleEl = document.querySelector('#s-end .end-title');
+  titleEl.classList.remove('success', 'fail');
+  if (mode === 'single') {
+    if (allCleared) titleEl.textContent = '🏆 ALL CLEARED! 🏆';
+    else if (success) titleEl.textContent = `LEVEL ${level} CLEARED!`;
+    else titleEl.textContent = `LEVEL ${level} FAILED`;
+    titleEl.classList.add(success ? 'success' : 'fail');
+  } else {
+    titleEl.textContent = '✦ GAME OVER ✦';
+  }
 
   const board = document.getElementById('results');
   board.innerHTML = '';
-  results.forEach((r, i) => {
+
+  if (mode === 'single' && results.length === 1) {
+    const r = results[0];
+    const tgtRow = document.createElement('div');
+    tgtRow.className = 'target-line';
+    tgtRow.innerHTML = `LEVEL ${level} TARGET ${target} → <span class="${success ? 'hit' : 'miss'}">${r.score}</span>`;
+    board.appendChild(tgtRow);
+    if (nextLevel) {
+      const nextRow = document.createElement('div');
+      nextRow.className = 'target-line';
+      nextRow.innerHTML = `▶ NEXT: <b style="color:var(--cyan)">LEVEL ${nextLevel}</b> · ★ <b style="color:var(--gold)">${nextTarget}</b>`;
+      board.appendChild(nextRow);
+    }
     const row = document.createElement('div');
-    row.className = 'result-row' + (i === 0 ? ' winner' : '');
+    row.className = 'result-row winner';
     row.innerHTML =
-      `<span class="res-rank">${i === 0 ? '🏆' : '#' + (i + 1)}</span>` +
+      `<span class="res-rank">${allCleared ? '👑' : success ? '🏆' : '💔'}</span>` +
       `<span class="res-name">${escHtml(r.nickname)}</span>` +
       `<span class="res-score">${r.score} PTS</span>`;
     board.appendChild(row);
-  });
+  } else {
+    results.forEach((r, i) => {
+      const row = document.createElement('div');
+      row.className = 'result-row' + (i === 0 ? ' winner' : '');
+      row.innerHTML =
+        `<span class="res-rank">${i === 0 ? '🏆' : '#' + (i + 1)}</span>` +
+        `<span class="res-name">${escHtml(r.nickname)}</span>` +
+        `<span class="res-score">${r.score} PTS</span>`;
+      board.appendChild(row);
+    });
+  }
 
   document.getElementById('chat-log').innerHTML = '';
-  let cd = 15;
-  document.getElementById('restart-cd').textContent = cd;
-  restartCdInterval = setInterval(() => {
-    cd--;
-    document.getElementById('restart-cd').textContent = cd;
-    if (cd <= 0) clearInterval(restartCdInterval);
-  }, 1000);
+  const restartRow = document.querySelector('.restart-row');
+  if (mode === 'single' && !nextLevel) {
+    /* terminal: no restart shown */
+    if (restartRow) restartRow.style.display = 'none';
+  } else {
+    if (restartRow) restartRow.style.display = '';
+    let cd = (mode === 'single' && nextLevel) ? 6 : 15;
+    const cdLabel = document.querySelector('.restart-row');
+    if (cdLabel && mode === 'single' && nextLevel) {
+      cdLabel.innerHTML = `NEXT LEVEL IN <span id="restart-cd" class="cd-num">${cd}</span>s`;
+    } else if (cdLabel) {
+      cdLabel.innerHTML = `NEXT GAME IN <span id="restart-cd" class="cd-num">${cd}</span>s`;
+    }
+    restartCdInterval = setInterval(() => {
+      cd--;
+      const el = document.getElementById('restart-cd');
+      if (el) el.textContent = cd;
+      if (cd <= 0) clearInterval(restartCdInterval);
+    }, 1000);
+  }
 
   show('s-end');
 });
@@ -381,6 +487,14 @@ function updateScore(num, val) {
   setTimeout(() => el.classList.remove('bump'), 200);
 }
 
+/* ── Floating-score color helper for 4 players ── */
+function playerColor(num) {
+  return num === 1 ? 'var(--p1)'
+       : num === 2 ? 'var(--p2)'
+       : num === 3 ? 'var(--p3)'
+       : 'var(--p4)';
+}
+
 /* ── Bubble grid ── */
 function renderGrid() {
   const grid = document.getElementById('bubble-grid');
@@ -405,14 +519,15 @@ function renderGrid() {
 function fitGrid() {
   const wrap = document.querySelector('.grid-wrap');
   if (!wrap) return;
-  const aw = wrap.clientWidth - 20;
-  const ah = wrap.clientHeight - 16;
+  const aw = wrap.clientWidth - 4;
+  const ah = wrap.clientHeight - 4;
   const gap = 3;
   const colSize = Math.floor((aw - (COLS - 1) * gap) / COLS);
   const rowSize = Math.floor((ah - (ROWS - 1) * gap) / ROWS);
-  const size = Math.max(20, Math.min(colSize, rowSize, 80));
+  const size = Math.max(16, Math.min(colSize, rowSize));
   const grid = document.getElementById('bubble-grid');
   grid.style.gridTemplateColumns = `repeat(${COLS}, ${size}px)`;
+  grid.style.gridTemplateRows = `repeat(${ROWS}, ${size}px)`;
 }
 window.addEventListener('resize', fitGrid);
 
@@ -586,7 +701,7 @@ function spawnScore(el, pts, num) {
     left:${rect.left + rect.width / 2}px;
     top:${rect.top + rect.height / 2}px;
     transform: translateX(-50%);
-    color:${num === 1 ? 'var(--p1)' : 'var(--p2)'};
+    color:${playerColor(num)};
   `;
   document.body.appendChild(fl);
   setTimeout(() => fl.remove(), 750);

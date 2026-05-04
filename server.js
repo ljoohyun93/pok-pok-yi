@@ -12,15 +12,31 @@ app.use(express.static(path.join(__dirname, 'public')));
 const rooms = new Map();
 
 const GAME_DURATION = 90;
-const ROWS = 14;
-const COLS = 20;
-const TOTAL = ROWS * COLS;
+const GAME_DURATION_SINGLE = 30;
+const SINGLE_TARGETS = [400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1400];
+const SINGLE_MAX_LEVEL = 10;
+const SINGLE_LEVEL_MULT = [1.0, 1.15, 1.3, 1.45, 1.6, 1.75, 1.9, 2.05, 2.2, 2.4];
+const TOTAL_TARGET = 280;
+
+function pickLayout(vw, vh) {
+  const HUD_H = 110;
+  const FOOTER_H = 36;
+  const aw = Math.max(vw - 8, 320);
+  const ah = Math.max(vh - HUD_H - FOOTER_H, 280);
+  const ratio = aw / ah;
+  let cols = Math.round(Math.sqrt(TOTAL_TARGET * ratio));
+  cols = Math.max(8, Math.min(28, cols));
+  let rows = Math.round(TOTAL_TARGET / cols);
+  rows = Math.max(6, Math.min(22, rows));
+  return { cols, rows };
+}
 const SPECIAL_COLORS = ['red', 'blue', 'purple'];
 const NORMAL_SCORE = 5;
 const SPECIAL_SCORE = 10;
 const SHIMMER_SCORE = 15;
 const SHIMMER_MAX = 6;
 const ROOM_TTL = 30 * 60 * 1000;
+const MAX_PLAYERS = 4;
 
 function genCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -31,8 +47,8 @@ function genCode() {
   return code;
 }
 
-function makeBubbles() {
-  return Array.from({ length: TOTAL }, (_, i) => ({ id: i, popped: false, color: 'normal' }));
+function makeBubbles(total) {
+  return Array.from({ length: total }, (_, i) => ({ id: i, popped: false, color: 'normal' }));
 }
 
 function clearTimers(room) {
@@ -46,15 +62,16 @@ function startGame(code) {
   const room = rooms.get(code);
   if (!room) return;
   const active = room.players.filter(p => p.active);
-  if (active.length < 2) return;
+  const minPlayers = room.mode === 'single' ? 1 : 2;
+  if (active.length < minPlayers) return;
 
   clearInterval(room.timerInterval);
   clearInterval(room.specialInterval);
   clearTimeout(room.restartTimeout);
 
   room.state = 'playing';
-  room.timer = GAME_DURATION;
-  room.bubbles = makeBubbles();
+  room.timer = room.mode === 'single' ? GAME_DURATION_SINGLE : GAME_DURATION;
+  room.bubbles = makeBubbles(room.total);
   room.shimmerCount = 0;
   active.forEach(p => { p.score = 0; });
 
@@ -62,6 +79,11 @@ function startGame(code) {
     bubbles: room.bubbles,
     players: active.map(({ nickname, score, num }) => ({ nickname, score, num })),
     timer: room.timer,
+    mode: room.mode,
+    cols: room.cols,
+    rows: room.rows,
+    target: room.mode === 'single' ? SINGLE_TARGETS[(room.level || 1) - 1] : null,
+    level: room.mode === 'single' ? (room.level || 1) : null,
   });
 
   room.timerInterval = setInterval(() => {
@@ -79,7 +101,11 @@ function startGame(code) {
     });
 
     const normals = unpopped.filter(b => b.color === 'normal');
-    const n = Math.min(Math.floor(Math.random() * 6) + 5, normals.length);
+    const lvlMult = (room.mode === 'single')
+      ? SINGLE_LEVEL_MULT[(room.level || 1) - 1] || 1
+      : 1;
+    const baseN = Math.floor(Math.random() * 6) + 5;
+    const n = Math.min(Math.round(baseN * lvlMult), normals.length);
     for (let i = 0; i < n; i++) {
       const idx = Math.floor(Math.random() * normals.length);
       if (normals[idx]) {
@@ -111,7 +137,35 @@ function endGame(code) {
     .map(({ nickname, score, num }) => ({ nickname, score, num }))
     .sort((a, b) => b.score - a.score);
 
-  io.to(code).emit('gameEnd', { results });
+  const payload = { results, mode: room.mode };
+  if (room.mode === 'single') {
+    const lvl = room.level || 1;
+    const target = SINGLE_TARGETS[lvl - 1];
+    const success = results.length > 0 && results[0].score >= target;
+    payload.target = target;
+    payload.level = lvl;
+    payload.success = success;
+    payload.nextLevel = success && lvl < SINGLE_MAX_LEVEL ? lvl + 1 : null;
+    payload.nextTarget = payload.nextLevel ? SINGLE_TARGETS[payload.nextLevel - 1] : null;
+    payload.allCleared = success && lvl === SINGLE_MAX_LEVEL;
+
+    io.to(code).emit('gameEnd', payload);
+
+    if (success && lvl < SINGLE_MAX_LEVEL) {
+      /* advance to next level after short pause */
+      room.level = lvl + 1;
+      room.restartTimeout = setTimeout(() => {
+        if (!rooms.has(code)) return;
+        startGame(code);
+      }, 6000);
+    } else {
+      /* failed or all cleared — no auto-restart, reset level for next solo */
+      room.level = 1;
+    }
+    return;
+  }
+
+  io.to(code).emit('gameEnd', payload);
 
   room.restartTimeout = setTimeout(() => {
     if (!rooms.has(code)) return;
@@ -121,14 +175,21 @@ function endGame(code) {
 }
 
 io.on('connection', socket => {
-  socket.on('createRoom', ({ nickname }) => {
+  socket.on('createRoom', ({ nickname, mode, viewportW, viewportH }) => {
+    const safeMode = mode === 'single' ? 'single' : 'multi';
     const code = genCode();
+    const layout = pickLayout(viewportW || 1280, viewportH || 720);
     const room = {
       code,
+      mode: safeMode,
+      cols: layout.cols,
+      rows: layout.rows,
+      total: layout.cols * layout.rows,
+      level: 1,
       state: 'waiting',
       players: [{ id: socket.id, nickname, score: 0, num: 1, active: true }],
-      bubbles: makeBubbles(),
-      timer: GAME_DURATION,
+      bubbles: makeBubbles(layout.cols * layout.rows),
+      timer: safeMode === 'single' ? GAME_DURATION_SINGLE : GAME_DURATION,
       timerInterval: null,
       specialInterval: null,
       restartTimeout: null,
@@ -140,18 +201,28 @@ io.on('connection', socket => {
     rooms.set(code, room);
     socket.join(code);
     socket.data.room = code;
-    socket.emit('roomCreated', { code, num: 1 });
+    socket.emit('roomCreated', { code, num: 1, mode: safeMode, cols: layout.cols, rows: layout.rows });
+
+    /* Single mode: start immediately */
+    if (safeMode === 'single') {
+      setTimeout(() => startGame(code), 800);
+    }
   });
 
   socket.on('joinRoom', ({ code, nickname }) => {
     const key = code.toUpperCase().trim();
     const room = rooms.get(key);
     if (!room) { socket.emit('joinError', { msg: '방을 찾을 수 없어요!' }); return; }
+    if (room.mode === 'single') { socket.emit('joinError', { msg: '솔로 방이라 입장 불가!' }); return; }
 
     const active = room.players.filter(p => p.active);
-    if (active.length >= 2) { socket.emit('joinError', { msg: '방이 꽉 찼어요!' }); return; }
+    if (active.length >= MAX_PLAYERS) { socket.emit('joinError', { msg: '방이 꽉 찼어요!' }); return; }
+    if (room.state === 'playing') { socket.emit('joinError', { msg: '이미 게임 진행 중!' }); return; }
 
-    const num = active.length + 1;
+    const usedNums = new Set(active.map(p => p.num));
+    let num = 1;
+    while (usedNums.has(num)) num++;
+
     room.players.push({ id: socket.id, nickname, score: 0, num, active: true });
     socket.join(key);
     socket.data.room = key;
@@ -160,8 +231,15 @@ io.on('connection', socket => {
     io.to(key).emit('playerJoined', {
       players: room.players.filter(p => p.active).map(({ nickname, num }) => ({ nickname, num })),
     });
+  });
 
-    setTimeout(() => startGame(key), 2000);
+  socket.on('startGame', () => {
+    const room = rooms.get(socket.data.room);
+    if (!room) return;
+    if (room.state === 'playing') return;
+    const active = room.players.filter(p => p.active);
+    if (active.length < 2) return;
+    startGame(room.code);
   });
 
   socket.on('popBubble', ({ id }) => {
@@ -177,16 +255,17 @@ io.on('connection', socket => {
 
     /* ── Shimmer: chain pop the entire row OR column at random ── */
     if (color === 'shimmer') {
+      const C = room.cols, R = room.rows;
       const direction = Math.random() < 0.5 ? 'h' : 'v';
-      const row = Math.floor(id / COLS);
-      const col = id % COLS;
+      const row = Math.floor(id / C);
+      const col = id % C;
       const chain = [];
 
       const indices = [];
       if (direction === 'h') {
-        for (let c = 0; c < COLS; c++) indices.push(row * COLS + c);
+        for (let c = 0; c < C; c++) indices.push(row * C + c);
       } else {
-        for (let r = 0; r < ROWS; r++) indices.push(r * COLS + col);
+        for (let r = 0; r < R; r++) indices.push(r * C + col);
       }
 
       indices.forEach(bid => {
