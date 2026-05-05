@@ -63,6 +63,7 @@ function loadFromDisk() {
 
 async function loadLeaderboardOnBoot() {
   if (useUpstash) {
+    console.log('[leaderboard] Upstash configured, fetching saved board...');
     const raw = await upstashCmd('GET', LB_KEY);
     if (raw) {
       try {
@@ -70,15 +71,18 @@ async function loadLeaderboardOnBoot() {
         if (Array.isArray(arr)) {
           leaderboard.length = 0;
           leaderboard.push(...arr);
-          console.log('[leaderboard] loaded from Upstash:', leaderboard.length);
+          console.log('[leaderboard] loaded from Upstash:', leaderboard.length, 'entries');
           return;
         }
-      } catch (_) {}
+      } catch (e) {
+        console.error('[leaderboard] parse failed:', e.message);
+      }
+    } else {
+      console.log('[leaderboard] Upstash key empty (first run, will populate)');
     }
-    /* Empty Upstash: try migrating from disk if exists */
     loadFromDisk();
   } else {
-    console.log('[leaderboard] Upstash NOT configured, using disk fallback');
+    console.log('[leaderboard] Upstash NOT configured, using disk fallback only');
     loadFromDisk();
   }
 }
