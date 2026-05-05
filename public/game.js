@@ -376,9 +376,9 @@ socket.on('bombPop', ({ triggerId, num, chain, scores }) => {
   });
 });
 
-socket.on('firePop', ({ triggerId, num, chain, scores }) => {
+socket.on('firePop', ({ triggerId, num, chain, scores, ring }) => {
   scores.forEach(s => updateScore(s.num, s.score));
-  showFireFrame();
+  showFireFrame(ring || 0);
   playWhoosh();
 
   bubbles[triggerId].popped = true;
@@ -758,21 +758,45 @@ function showRowFlash(direction, row, col) {
   setTimeout(() => flash.remove(), 620);
 }
 
-/* ── Fire frame burst around the grid ── */
-function showFireFrame() {
+/* ── Fire frame burst around the chosen ring ── */
+function showFireFrame(ring) {
   const grid = document.getElementById('bubble-grid');
   if (!grid) return;
-  const rect = grid.getBoundingClientRect();
+  ring = ring || 0;
+  const tl = grid.children[ring * COLS + ring];
+  const br = grid.children[(ROWS - 1 - ring) * COLS + (COLS - 1 - ring)];
+  if (!tl || !br) return;
+  const r1 = tl.getBoundingClientRect();
+  const r2 = br.getBoundingClientRect();
   const frame = document.createElement('div');
   frame.className = 'fire-frame';
   frame.style.cssText = `
-    left:${rect.left - 14}px;
-    top:${rect.top - 14}px;
-    width:${rect.width + 28}px;
-    height:${rect.height + 28}px;
+    left:${r1.left - 12}px;
+    top:${r1.top - 12}px;
+    width:${r2.right - r1.left + 24}px;
+    height:${r2.bottom - r1.top + 24}px;
   `;
   document.body.appendChild(frame);
-  setTimeout(() => frame.remove(), 1300);
+  setTimeout(() => frame.remove(), 1400);
+
+  /* Emit roving sparks around the perimeter for extra impact */
+  const cx = (r1.left + r2.right) / 2;
+  const cy = (r1.top + r2.bottom) / 2;
+  const halfW = (r2.right - r1.left) / 2 + 12;
+  const halfH = (r2.bottom - r1.top) / 2 + 12;
+  for (let i = 0; i < 14; i++) {
+    const ang = (i / 14) * Math.PI * 2 + Math.random() * 0.4;
+    const dist = 0.85 + Math.random() * 0.25;
+    const px = cx + Math.cos(ang) * halfW * dist;
+    const py = cy + Math.sin(ang) * halfH * dist;
+    const s = document.createElement('div');
+    s.className = 'fire-spark';
+    const dx = (Math.random() - 0.5) * 80;
+    const dy = -30 - Math.random() * 60;
+    s.style.cssText = `left:${px}px;top:${py}px;--dx:${dx}px;--dy:${dy}px;`;
+    document.body.appendChild(s);
+    setTimeout(() => s.remove(), 900);
+  }
 }
 
 /* ── Boom sound for bomb ── */

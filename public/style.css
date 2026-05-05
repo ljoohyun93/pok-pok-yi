@@ -594,30 +594,77 @@ html, body {
   50%      { transform: scale(1.22); filter: brightness(1.4); }
 }
 
-/* FIRE — flickering flame */
+/* FIRE — intense flickering with sparks (clearly distinct from BOMB) */
 .bubble.s-fire {
-  background: radial-gradient(circle at 50% 60%,
-    rgba(255,240,160,0.95) 0%,
-    rgba(255,170,40,0.92)  30%,
-    rgba(255,80,20,0.88)   60%,
-    rgba(160,20,5,0.88)   100%);
-  border: 2px solid rgba(80,20,0,0.7);
+  background:
+    radial-gradient(circle at 50% 65%,
+      rgba(255,255,220,1)    0%,
+      rgba(255,240,120,0.98) 18%,
+      rgba(255,170,30,0.95)  42%,
+      rgba(255,70,15,0.92)   72%,
+      rgba(120,15,0,0.92)   100%);
+  border: 2px solid rgba(255,210,90,0.95);
   box-shadow:
-    inset 0 -6px 11px rgba(80,20,0,0.5),
-    inset 0 5px 9px rgba(255,255,200,0.6),
-    0 0 18px rgba(255,140,30,1),
-    0 0 38px rgba(255,80,20,0.85),
-    0 0 64px rgba(255,40,10,0.55);
-  animation: fireFlicker 0.25s steps(2) infinite, fireBob 0.9s ease-in-out infinite;
-  z-index: 2;
+    inset 0 -8px 14px rgba(120,30,0,0.55),
+    inset 0 7px 14px rgba(255,255,200,0.75),
+    0 0 24px rgba(255,220,60,1),
+    0 0 48px rgba(255,140,30,0.9),
+    0 0 80px rgba(255,60,15,0.7);
+  animation: fireJitter 0.08s steps(2) infinite, fireBob 0.5s ease-in-out infinite;
+  z-index: 3;
 }
-@keyframes fireFlicker {
-  0%   { filter: brightness(1)   hue-rotate(0deg); }
-  100% { filter: brightness(1.35) hue-rotate(-15deg); }
+@keyframes fireJitter {
+  0%   { filter: brightness(1)    hue-rotate(0deg)   saturate(1); transform: translate(0, 0) scale(1); }
+  100% { filter: brightness(1.55) hue-rotate(-20deg) saturate(1.3); transform: translate(0.5px, -0.5px) scale(1.04); }
 }
 @keyframes fireBob {
   0%, 100% { transform: scale(1); }
-  50%      { transform: scale(1.08); }
+  50%      { transform: scale(1.12); }
+}
+/* Override shared ::after — fire gets sparks instead of a refraction dot */
+.bubble.s-fire::after {
+  content: '';
+  position: absolute;
+  inset: -28%;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 18% 22%, rgba(255,255,180,1) 0%, transparent 5%),
+    radial-gradient(circle at 82% 18%, rgba(255,210,80,1)  0%, transparent 5%),
+    radial-gradient(circle at 50% 92%, rgba(255,180,50,1)  0%, transparent 5%),
+    radial-gradient(circle at 12% 75%, rgba(255,255,100,1) 0%, transparent 4%),
+    radial-gradient(circle at 88% 70%, rgba(255,200,60,1)  0%, transparent 5%),
+    radial-gradient(circle at 50% 8%,  rgba(255,240,140,1) 0%, transparent 4%),
+    radial-gradient(circle at 30% 55%, rgba(255,160,40,0.9) 0%, transparent 4%),
+    radial-gradient(circle at 68% 50%, rgba(255,220,90,0.9) 0%, transparent 4%);
+  filter: blur(0.4px);
+  animation: sparkSwirl 0.35s steps(4) infinite;
+  pointer-events: none;
+  width: auto; height: auto;
+  top: -28%; left: -28%; right: -28%; bottom: -28%;
+  background-size: 100% 100%;
+}
+@keyframes sparkSwirl {
+  0%   { transform: rotate(0deg)   scale(1);    opacity: 0.85; }
+  25%  { transform: rotate(40deg)  scale(1.18); opacity: 1; }
+  50%  { transform: rotate(80deg)  scale(0.9);  opacity: 0.7; }
+  75%  { transform: rotate(120deg) scale(1.12); opacity: 1; }
+  100% { transform: rotate(160deg) scale(1);    opacity: 0.85; }
+}
+
+/* Roving sparks emitted by JS when fire pops */
+.fire-spark {
+  position: fixed;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff 0%, #ffd84d 30%, #ff7a1f 60%, transparent 100%);
+  box-shadow: 0 0 10px rgba(255,180,50,0.95), 0 0 20px rgba(255,90,20,0.7);
+  pointer-events: none;
+  z-index: 720;
+  animation: sparkFly 0.85s ease-out forwards;
+}
+@keyframes sparkFly {
+  0%   { transform: translate(0, 0) scale(0.7); opacity: 1; }
+  100% { transform: translate(var(--dx, 0), var(--dy, -60px)) scale(0.2); opacity: 0; }
 }
 
 /* Fire frame burst — shown when fire bubble pops */
@@ -685,7 +732,7 @@ html, body {
 }
 .bubble.s-red::after, .bubble.s-blue::after, .bubble.s-purple::after,
 .bubble.s-pink::after, .bubble.s-yellow::after,
-.bubble.s-bomb::after, .bubble.s-fire::after,
+.bubble.s-bomb::after,
 .bubble.s-green::after {
   content: ''; position: absolute;
   top: 64%; left: 60%; width: 16%; height: 12%;

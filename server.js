@@ -477,26 +477,41 @@ io.on('connection', socket => {
       return;
     }
 
-    /* ── Fire: pop entire perimeter ── */
+    /* ── Fire: pop the OUTERMOST RING that still has unpopped bubbles.
+       If outer perimeter is empty, step inward ring by ring. ── */
     if (color === 'fire') {
       bubble.popped = true;
       player.score += FIRE_BONUS;
       const C = room.cols, R = room.rows;
+      const maxRing = Math.floor(Math.min(C, R) / 2);
+      const isOnRing = (idx, ring) => {
+        const rr = Math.floor(idx / C), cc = idx % C;
+        return rr === ring || rr === R - 1 - ring || cc === ring || cc === C - 1 - ring;
+      };
+      const ringHasUnpopped = (ring) => {
+        for (let i = 0; i < room.bubbles.length; i++) {
+          if (!isOnRing(i, ring)) continue;
+          if (!room.bubbles[i].popped) return true;
+        }
+        return false;
+      };
+      let chosenRing = 0;
+      while (chosenRing < maxRing && !ringHasUnpopped(chosenRing)) chosenRing++;
+
       const chain = [];
       for (let i = 0; i < room.bubbles.length; i++) {
+        if (!isOnRing(i, chosenRing)) continue;
         const b = room.bubbles[i];
         if (b.popped) continue;
-        const r = Math.floor(i / C), c = i % C;
-        if (r === 0 || r === R - 1 || c === 0 || c === C - 1) {
-          b.popped = true;
-          const c2 = b.color;
-          const p = pointsFor(c2);
-          player.score += p;
-          chain.push({ id: i, color: c2, pts: p });
-        }
+        b.popped = true;
+        const c2 = b.color;
+        const p = pointsFor(c2);
+        player.score += p;
+        chain.push({ id: i, color: c2, pts: p });
       }
       io.to(socket.data.room).emit('firePop', {
         triggerId: id, num: player.num, chain, bonus: FIRE_BONUS,
+        ring: chosenRing, cols: C, rows: R,
         scores: room.players.filter(p => p.active).map(({ num, score }) => ({ num, score })),
       });
       return;
