@@ -200,6 +200,8 @@ function clearTimers(room) {
 function startGame(code) {
   const room = rooms.get(code);
   if (!room) return;
+  /* Defensive: prevent overlapping starts (race fix for timer jumps) */
+  if (room.state === 'playing') return;
   const active = room.players.filter(p => p.active);
   const minPlayers = room.mode === 'single' ? 1 : 2;
   if (active.length < minPlayers) return;
@@ -207,6 +209,8 @@ function startGame(code) {
   clearInterval(room.timerInterval);
   clearInterval(room.specialInterval);
   clearTimeout(room.restartTimeout);
+  room.timerInterval = null;
+  room.specialInterval = null;
 
   room.state = 'playing';
   room.timer = room.mode === 'single' ? GAME_DURATION_SINGLE : GAME_DURATION;
@@ -281,6 +285,7 @@ function startGame(code) {
   });
 
   room.timerInterval = setInterval(() => {
+    if (room.state !== 'playing') return;  /* defensive: stale callback guard */
     room.timer--;
     io.to(code).emit('timerUpdate', room.timer);
     if (room.timer <= 0) endGame(code);
@@ -574,12 +579,20 @@ io.on('connection', socket => {
       return;
     }
 
-    /* ── Shimmer: chain pop the entire row OR column at random ── */
+    /* ── Shimmer: chain pop the row OR column with more unpopped bubbles.
+       (Random tie-break) Avoids the "shimmer ate itself only" bug when one
+       axis is mostly empty. ── */
     if (color === 'shimmer') {
       const C = room.cols, R = room.rows;
-      const direction = Math.random() < 0.5 ? 'h' : 'v';
       const row = Math.floor(id / C);
       const col = id % C;
+      let rowUnpopped = 0, colUnpopped = 0;
+      for (let c = 0; c < C; c++) if (!room.bubbles[row * C + c].popped) rowUnpopped++;
+      for (let r = 0; r < R; r++) if (!room.bubbles[r * C + col].popped) colUnpopped++;
+      const direction =
+        rowUnpopped > colUnpopped ? 'h' :
+        colUnpopped > rowUnpopped ? 'v' :
+        (Math.random() < 0.5 ? 'h' : 'v');
       const chain = [];
 
       const indices = [];

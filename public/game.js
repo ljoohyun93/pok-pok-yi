@@ -287,6 +287,8 @@ socket.on('playerJoined', ({ players }) => {
 
 socket.on('gameStart', ({ bubbles: serverBubbles, players, timer, mode, target, cols, rows, level }) => {
   bubbles = serverBubbles;
+  /* Re-fit grid on every new game (wrap dims may have shifted between games) */
+  gridSized = false;
   if (cols) COLS = cols;
   if (rows) ROWS = rows;
   scores = { 1: 0, 2: 0, 3: 0, 4: 0 };
@@ -620,9 +622,10 @@ function playerColor(num) {
 }
 
 /* ── Bubble grid ── */
+let gridSized = false;  /* fitGrid runs ONCE per game; resize/orientation only */
+
 function renderGrid() {
   const grid = document.getElementById('bubble-grid');
-  grid.style.gridTemplateColumns = `repeat(${COLS}, 1fr)`;
   grid.innerHTML = '';
 
   bubbles.forEach((b, i) => {
@@ -636,8 +639,14 @@ function renderGrid() {
     grid.appendChild(el);
   });
 
-  /* Responsive size: fit grid into available container */
-  requestAnimationFrame(fitGrid);
+  /* Only size the grid the very first time it's rendered for this game.
+     Subsequent bubblesUpdate calls keep the same grid template, so bubbles
+     don't resize/shift visually mid-game. */
+  if (!gridSized) {
+    gridSized = true;
+    requestAnimationFrame(fitGrid);
+    setTimeout(fitGrid, 80);  /* second pass after fonts settle */
+  }
 }
 
 function fitGrid() {
