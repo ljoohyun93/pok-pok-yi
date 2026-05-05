@@ -224,6 +224,54 @@ const BOMB_BONUS = 20;
 const BOMB_BLAST_COUNT = 10;
 const FIRE_BONUS = 25;
 
+/* Schedule a popped bubble to respawn back to 'normal'.
+   Emits via 80ms-batched flush. Used by both single-pop and chain-pop paths
+   so chain-popped bubbles also refill the board. */
+function maybeScheduleRespawn(room, bubble, id) {
+  let respawnChance = room.mode === 'multi' ? 0.85 : 0.80;
+  let respawnMin    = 180;
+  let respawnRange  = room.mode === 'multi' ? 700 : 900;
+  const lvlR = room.level || 1;
+
+  if (room.mode === 'single' && lvlR >= 4) {
+    let boost;
+    /* L5+: +6x per level, L7+: bump again so chains keep refilling */
+    if (lvlR >= 7)      boost = 1 + (lvlR - 4) * 9;   /* L7:28, L8:37, L9:46, L10:55 */
+    else if (lvlR >= 5) boost = 1 + (lvlR - 4) * 6;   /* L5:7, L6:13 */
+    else                boost = 1.3;                  /* L4 */
+    respawnChance = boost >= 2 ? 1.0 : Math.min(0.97, respawnChance * boost);
+    respawnMin    = Math.max(10, Math.round(respawnMin / boost));
+    respawnRange  = Math.max(20, Math.round(respawnRange / boost));
+  }
+  if (Math.random() >= respawnChance) return;
+  if (room.timer <= 4) return;
+
+  const delay = respawnMin + Math.floor(Math.random() * respawnRange);
+  setTimeout(() => {
+    if (!rooms.has(room.code)) return;
+    if (room.state !== 'playing') return;
+    if (room.timer <= 3) return;
+    if (!bubble.popped) return;
+    bubble.popped = false;
+    bubble.color = 'normal';
+
+    if (!room._respawnBuffer) room._respawnBuffer = [];
+    room._respawnBuffer.push(id);
+    if (!room._respawnFlush) {
+      room._respawnFlush = setTimeout(() => {
+        const ids = room._respawnBuffer || [];
+        room._respawnBuffer = [];
+        room._respawnFlush = null;
+        if (ids.length === 1) {
+          io.to(room.code).emit('bubbleRespawned', { id: ids[0] });
+        } else if (ids.length > 1) {
+          io.to(room.code).emit('bubbleRespawnedBatch', { ids });
+        }
+      }, 80);
+    }
+  }, delay);
+}
+
 function pointsFor(color) {
   if (color === 'normal') return SCORE_NORMAL;
   if (color === 'red' || color === 'pink' || color === 'yellow') return SCORE_LOW;
@@ -604,6 +652,7 @@ io.on('connection', socket => {
         const p = pointsFor(c2);
         player.score += p;
         chain.push({ id: b.id, color: c2, pts: p });
+        maybeScheduleRespawn(room, b, b.id);
       }
       io.to(socket.data.room).emit('bombPop', {
         triggerId: id, num: player.num, chain, bonus: BOMB_BONUS,
@@ -643,6 +692,7 @@ io.on('connection', socket => {
         const p = pointsFor(c2);
         player.score += p;
         chain.push({ id: i, color: c2, pts: p });
+        maybeScheduleRespawn(room, b, i);
       }
       io.to(socket.data.room).emit('firePop', {
         triggerId: id, num: player.num, chain, bonus: FIRE_BONUS,
@@ -683,6 +733,7 @@ io.on('connection', socket => {
         const p = pointsFor(c2);
         player.score += p;
         chain.push({ id: bid, color: c2, pts: p });
+        maybeScheduleRespawn(room, b, bid);
       });
 
       io.to(socket.data.room).emit('rowPopped', {
@@ -706,50 +757,7 @@ io.on('connection', socket => {
       scores: room.players.filter(p => p.active).map(({ num, score }) => ({ num, score })),
     });
 
-    /* Respawn — base rate; single mode scales aggressively from L5+
-       L4: 1.3x, L5+: +6x per level → L5:7, L6:13, L7:19, L8:25, L9:31, L10:37
-       Combined with very low min/range floors for near-instant respawn at L5+. */
-    let respawnChance = room.mode === 'multi' ? 0.85 : 0.80;
-    let respawnMin    = 180;
-    let respawnRange  = room.mode === 'multi' ? 700 : 900;
-    const lvlR = room.level || 1;
-    if (room.mode === 'single' && lvlR >= 4) {
-      let boost;
-      if (lvlR >= 5) boost = 1 + (lvlR - 4) * 6;
-      else           boost = 1.3;
-      respawnChance = boost >= 2 ? 1.0 : Math.min(0.97, respawnChance * boost);
-      respawnMin    = Math.max(15, Math.round(respawnMin / boost));
-      respawnRange  = Math.max(30, Math.round(respawnRange / boost));
-    }
-    if (Math.random() < respawnChance && room.timer > 4) {
-      const delay = respawnMin + Math.floor(Math.random() * respawnRange);
-      setTimeout(() => {
-        if (!rooms.has(room.code)) return;
-        if (room.state !== 'playing') return;
-        if (room.timer <= 3) return;
-        if (!bubble.popped) return;
-        bubble.popped = false;
-        bubble.color = 'normal';
-
-        /* Batch emit: collect respawned ids in an 80ms window, fire once.
-           At L10 dozens of respawns happen per second — a single batch
-           message is far cheaper than N individual emits. */
-        if (!room._respawnBuffer) room._respawnBuffer = [];
-        room._respawnBuffer.push(id);
-        if (!room._respawnFlush) {
-          room._respawnFlush = setTimeout(() => {
-            const ids = room._respawnBuffer || [];
-            room._respawnBuffer = [];
-            room._respawnFlush = null;
-            if (ids.length === 1) {
-              io.to(room.code).emit('bubbleRespawned', { id: ids[0] });
-            } else if (ids.length > 1) {
-              io.to(room.code).emit('bubbleRespawnedBatch', { ids });
-            }
-          }, 80);
-        }
-      }, delay);
-    }
+    maybeScheduleRespawn(room, bubble, id);
   });
 
   socket.on('chat', ({ msg }) => {
