@@ -548,19 +548,20 @@ io.on('connection', socket => {
       scores: room.players.filter(p => p.active).map(({ num, score }) => ({ num, score })),
     });
 
-    /* Respawn — base rate; single mode scales up by level
-       L4: 1.3x, L5+: +3x per level → L5:4, L6:7, L7:10, L8:13, L9:16, L10:19 */
+    /* Respawn — base rate; single mode scales aggressively from L5+
+       L4: 1.3x, L5+: +6x per level → L5:7, L6:13, L7:19, L8:25, L9:31, L10:37
+       Combined with very low min/range floors for near-instant respawn at L5+. */
     let respawnChance = room.mode === 'multi' ? 0.85 : 0.80;
     let respawnMin    = 180;
     let respawnRange  = room.mode === 'multi' ? 700 : 900;
     const lvlR = room.level || 1;
     if (room.mode === 'single' && lvlR >= 4) {
       let boost;
-      if (lvlR >= 5) boost = 1 + (lvlR - 4) * 3;
+      if (lvlR >= 5) boost = 1 + (lvlR - 4) * 6;
       else           boost = 1.3;
-      respawnChance = boost >= 3 ? 0.99 : Math.min(0.97, respawnChance * boost);
-      respawnMin    = Math.max(40,  Math.round(respawnMin / boost));
-      respawnRange  = Math.max(80,  Math.round(respawnRange / boost));
+      respawnChance = boost >= 2 ? 1.0 : Math.min(0.97, respawnChance * boost);
+      respawnMin    = Math.max(15, Math.round(respawnMin / boost));
+      respawnRange  = Math.max(30, Math.round(respawnRange / boost));
     }
     if (Math.random() < respawnChance && room.timer > 4) {
       const delay = respawnMin + Math.floor(Math.random() * respawnRange);
