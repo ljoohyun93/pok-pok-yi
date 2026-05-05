@@ -254,6 +254,9 @@ function clearTimers(room) {
   clearTimeout(room.expireTimeout);
   if (room.bombTimeouts) { room.bombTimeouts.forEach(clearTimeout); room.bombTimeouts = []; }
   clearTimeout(room.fireTimeout);
+  clearTimeout(room._respawnFlush);
+  room._respawnFlush = null;
+  room._respawnBuffer = [];
 }
 
 function startGame(code) {
@@ -727,7 +730,24 @@ io.on('connection', socket => {
         if (!bubble.popped) return;
         bubble.popped = false;
         bubble.color = 'normal';
-        io.to(room.code).emit('bubbleRespawned', { id });
+
+        /* Batch emit: collect respawned ids in an 80ms window, fire once.
+           At L10 dozens of respawns happen per second — a single batch
+           message is far cheaper than N individual emits. */
+        if (!room._respawnBuffer) room._respawnBuffer = [];
+        room._respawnBuffer.push(id);
+        if (!room._respawnFlush) {
+          room._respawnFlush = setTimeout(() => {
+            const ids = room._respawnBuffer || [];
+            room._respawnBuffer = [];
+            room._respawnFlush = null;
+            if (ids.length === 1) {
+              io.to(room.code).emit('bubbleRespawned', { id: ids[0] });
+            } else if (ids.length > 1) {
+              io.to(room.code).emit('bubbleRespawnedBatch', { ids });
+            }
+          }, 80);
+        }
       }, delay);
     }
   });

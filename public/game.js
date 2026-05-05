@@ -540,6 +540,23 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
+socket.on('bubbleRespawnedBatch', ({ ids }) => {
+  if (!Array.isArray(ids)) return;
+  const grid = document.getElementById('bubble-grid');
+  ids.forEach(id => {
+    if (!bubbles[id]) return;
+    bubbles[id].popped = false;
+    bubbles[id].color = 'normal';
+    delete bubbles[id].poppedBy;
+    const el = grid && grid.children[id];
+    if (!el) return;
+    el.className = 'bubble normal respawning';
+    setTimeout(() => {
+      if (el && !bubbles[id].popped) el.classList.remove('respawning');
+    }, 450);
+  });
+});
+
 socket.on('bubbleRespawned', ({ id }) => {
   if (!bubbles[id]) return;
   bubbles[id].popped = false;
@@ -550,17 +567,13 @@ socket.on('bubbleRespawned', ({ id }) => {
   const el = grid && grid.children[id];
   if (!el) return;
 
+  /* Just update the class — listeners are attached to the node, not popped state.
+     Avoids cloneNode/replaceWith churn that locked up the main thread at L10
+     where dozens of respawns fire per second. */
   el.className = 'bubble normal respawning';
-  /* Re-bind click — old listener was on a popped element, but since we never
-     replaced the node, its listener is still attached. Re-attach safely. */
-  const fresh = el.cloneNode(false);
-  fresh.className = 'bubble normal respawning';
-  fresh.dataset.id = id;
-  fresh.addEventListener('click', () => onClickBubble(id));
-  fresh.addEventListener('touchstart', ev => { ev.preventDefault(); onClickBubble(id); }, { passive: false });
-  el.replaceWith(fresh);
-
-  setTimeout(() => fresh.classList.remove('respawning'), 450);
+  setTimeout(() => {
+    if (el && !bubbles[id].popped) el.classList.remove('respawning');
+  }, 450);
 });
 
 socket.on('gameEnd', ({ results, mode, target, success, level, nextLevel, nextTarget, allCleared, leaderboard }) => {
@@ -706,12 +719,25 @@ function renderGrid() {
     const el = document.createElement('div');
     el.className = 'bubble ' + bubbleClass(b);
     el.dataset.id = i;
-    if (!b.popped) {
-      el.addEventListener('click', () => onClickBubble(i));
-      el.addEventListener('touchstart', ev => { ev.preventDefault(); onClickBubble(i); }, { passive: false });
-    }
     grid.appendChild(el);
   });
+
+  /* Single delegated listeners for the whole grid — replaces N per-bubble
+     listeners. Far cheaper at high level (board churns dozens of times/sec). */
+  if (!grid._delegated) {
+    grid._delegated = true;
+    grid.addEventListener('click', (ev) => {
+      const t = ev.target.closest('.bubble');
+      if (!t || !t.dataset.id) return;
+      onClickBubble(+t.dataset.id);
+    });
+    grid.addEventListener('touchstart', (ev) => {
+      const t = ev.target.closest('.bubble');
+      if (!t || !t.dataset.id) return;
+      ev.preventDefault();
+      onClickBubble(+t.dataset.id);
+    }, { passive: false });
+  }
 
   /* Only size the grid the very first time it's rendered for this game.
      Subsequent bubblesUpdate calls keep the same grid template, so bubbles
@@ -776,8 +802,15 @@ function onClickBubble(i) {
   const b = bubbles[i];
   if (b.popped) return;
 
-  /* Shimmer/Bomb/Fire — let server orchestrate; we just send & wait */
+  /* Shimmer/Bomb/Fire — let server orchestrate; we just send & wait.
+     Add immediate tap feedback so user sees their click registered. */
   if (b.color === 'shimmer' || b.color === 'bomb' || b.color === 'fire') {
+    const grid = document.getElementById('bubble-grid');
+    const el = grid && grid.children[i];
+    if (el) {
+      el.classList.add('tap-feedback');
+      setTimeout(() => el.classList.remove('tap-feedback'), 140);
+    }
     socket.emit('popBubble', { id: i });
     return;
   }
