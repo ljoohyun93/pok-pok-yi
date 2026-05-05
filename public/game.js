@@ -466,6 +466,80 @@ socket.on('leaderboardUpdate', (board) => {
   renderLeaderboard(document.getElementById('lb-list'), lastLeaderboard);
 });
 
+/* ── Reviews ── */
+let allReviews = [];
+let reviewsExpanded = false;
+
+function renderReviews() {
+  const list = document.getElementById('rv-list');
+  const more = document.getElementById('rv-more');
+  if (!list) return;
+  if (allReviews.length === 0) {
+    list.innerHTML = '<li class="rv-empty">아직 후기 없음</li>';
+    if (more) more.style.display = 'none';
+    return;
+  }
+  list.innerHTML = allReviews.map(r =>
+    `<li>` +
+      `<span class="rv-nick-display">${escHtml(r.nickname)}</span>` +
+      `<span class="rv-text-display">${escHtml(r.text)}</span>` +
+    `</li>`
+  ).join('');
+  if (more) {
+    if (allReviews.length > 5) {
+      more.style.display = '';
+      more.textContent = reviewsExpanded
+        ? '접기 ▲'
+        : `더보기 (+${allReviews.length - 5}) ▼`;
+    } else {
+      more.style.display = 'none';
+    }
+  }
+}
+
+socket.on('reviewsUpdate', (revs) => {
+  allReviews = Array.isArray(revs) ? revs : [];
+  renderReviews();
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+  const moreBtn = document.getElementById('rv-more');
+  const list = document.getElementById('rv-list');
+  if (moreBtn && list) {
+    moreBtn.addEventListener('click', () => {
+      reviewsExpanded = !reviewsExpanded;
+      list.classList.toggle('expanded', reviewsExpanded);
+      list.classList.toggle('collapsed', !reviewsExpanded);
+      renderReviews();
+    });
+  }
+
+  const rvForm = document.getElementById('rv-form');
+  if (rvForm) {
+    rvForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const nickEl = document.getElementById('rv-nick');
+      const textEl = document.getElementById('rv-text');
+      const nick = nickEl.value.trim();
+      const text = textEl.value.trim();
+      if (!nick) { toast('닉네임 입력!'); nickEl.focus(); return; }
+      if (!text) { toast('후기를 적어주세요!'); textEl.focus(); return; }
+      socket.emit('submitReview', { nickname: nick, text });
+      textEl.value = '';
+      toast('후기 등록 완료!');
+    });
+  }
+
+  /* Auto-fill review nick from main nick input */
+  const mainNick = document.getElementById('inp-nick');
+  if (mainNick) {
+    mainNick.addEventListener('input', () => {
+      const rvNick = document.getElementById('rv-nick');
+      if (rvNick && !rvNick.value) rvNick.value = mainNick.value;
+    });
+  }
+});
+
 socket.on('bubbleRespawned', ({ id }) => {
   if (!bubbles[id]) return;
   bubbles[id].popped = false;

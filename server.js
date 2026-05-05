@@ -107,6 +107,65 @@ function saveLeaderboard() {
 
 loadLeaderboardOnBoot();
 
+/* ── Reviews (persisted) ── */
+const REVIEWS_KEY  = 'pok-pok-yi:reviews';
+const REVIEWS_FILE = path.join(__dirname, 'data', 'reviews.json');
+const REVIEWS_MAX  = 200;
+const reviews = [];
+
+async function loadReviewsOnBoot() {
+  if (useUpstash) {
+    const raw = await upstashCmd('GET', REVIEWS_KEY);
+    if (raw) {
+      try {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) {
+          reviews.length = 0;
+          reviews.push(...arr);
+          console.log('[reviews] loaded from Upstash:', reviews.length);
+          return;
+        }
+      } catch (_) {}
+    }
+  }
+  try {
+    if (fs.existsSync(REVIEWS_FILE)) {
+      const arr = JSON.parse(fs.readFileSync(REVIEWS_FILE, 'utf8'));
+      if (Array.isArray(arr)) {
+        reviews.length = 0;
+        reviews.push(...arr);
+        console.log('[reviews] loaded from disk:', reviews.length);
+      }
+    }
+  } catch (_) {}
+}
+
+let reviewSaveTimer = null;
+function saveReviews() {
+  clearTimeout(reviewSaveTimer);
+  reviewSaveTimer = setTimeout(() => {
+    const data = JSON.stringify(reviews);
+    if (useUpstash) upstashCmd('SET', REVIEWS_KEY, data).catch(() => {});
+    try {
+      const dir = path.dirname(REVIEWS_FILE);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(REVIEWS_FILE, data);
+    } catch (_) {}
+  }, 400);
+}
+
+function recordReview(nickname, text) {
+  const nick = String(nickname || '').trim().slice(0, 12);
+  const body = String(text || '').trim().slice(0, 200);
+  if (!nick || !body) return false;
+  reviews.unshift({ nickname: nick, text: body, ts: Date.now() });
+  if (reviews.length > REVIEWS_MAX) reviews.length = REVIEWS_MAX;
+  saveReviews();
+  return true;
+}
+
+loadReviewsOnBoot();
+
 function recordLeaderboard(nickname, level, score) {
   if (!nickname) return;
   const nick = String(nickname).slice(0, 12);
@@ -423,11 +482,22 @@ function endGame(code) {
 }
 
 io.on('connection', socket => {
-  /* Send latest leaderboard immediately so lobby can show it */
+  /* Send latest leaderboard + reviews immediately so lobby can show them */
   socket.emit('leaderboardUpdate', getTopLeaderboard(5));
+  socket.emit('reviewsUpdate', reviews.slice(0, 50));
 
   socket.on('getLeaderboard', () => {
     socket.emit('leaderboardUpdate', getTopLeaderboard(5));
+  });
+
+  socket.on('getReviews', () => {
+    socket.emit('reviewsUpdate', reviews.slice(0, 50));
+  });
+
+  socket.on('submitReview', ({ nickname, text }) => {
+    if (recordReview(nickname, text)) {
+      io.emit('reviewsUpdate', reviews.slice(0, 50));
+    }
   });
 
   socket.on('createRoom', ({ nickname, mode, viewportW, viewportH }) => {
