@@ -14,41 +14,94 @@ const fs = require('fs');
 const rooms = new Map();
 
 /* Single-mode leaderboard: best (level, score) per nickname.
-   Persisted to disk so it survives normal restarts. */
+   Storage priority:
+     1) Upstash Redis (env vars set) — survives all redeploys
+     2) Local disk fallback (data/leaderboard.json) — survives same instance only
+*/
 const LB_FILE = path.join(__dirname, 'data', 'leaderboard.json');
+const LB_KEY  = 'pok-pok-yi:leaderboard';
+const UPSTASH_URL   = process.env.UPSTASH_REDIS_REST_URL;
+const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+const useUpstash = !!(UPSTASH_URL && UPSTASH_TOKEN);
 const leaderboard = [];
 
-function loadLeaderboardFromDisk() {
+async function upstashCmd(...args) {
+  if (!useUpstash) return null;
+  try {
+    const r = await fetch(UPSTASH_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${UPSTASH_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(args),
+    });
+    if (!r.ok) {
+      console.error('[upstash] HTTP', r.status);
+      return null;
+    }
+    const d = await r.json();
+    return d.result;
+  } catch (e) {
+    console.error('[upstash] cmd error:', e.message);
+    return null;
+  }
+}
+
+function loadFromDisk() {
   try {
     if (fs.existsSync(LB_FILE)) {
-      const raw = fs.readFileSync(LB_FILE, 'utf8');
-      const arr = JSON.parse(raw);
+      const arr = JSON.parse(fs.readFileSync(LB_FILE, 'utf8'));
       if (Array.isArray(arr)) {
         leaderboard.length = 0;
         leaderboard.push(...arr);
-        console.log('[leaderboard] loaded', leaderboard.length, 'entries');
+        console.log('[leaderboard] loaded from disk:', leaderboard.length);
       }
     }
-  } catch (e) {
-    console.error('[leaderboard] load failed:', e.message);
+  } catch (e) { console.error('[leaderboard] disk load failed:', e.message); }
+}
+
+async function loadLeaderboardOnBoot() {
+  if (useUpstash) {
+    const raw = await upstashCmd('GET', LB_KEY);
+    if (raw) {
+      try {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) {
+          leaderboard.length = 0;
+          leaderboard.push(...arr);
+          console.log('[leaderboard] loaded from Upstash:', leaderboard.length);
+          return;
+        }
+      } catch (_) {}
+    }
+    /* Empty Upstash: try migrating from disk if exists */
+    loadFromDisk();
+  } else {
+    console.log('[leaderboard] Upstash NOT configured, using disk fallback');
+    loadFromDisk();
   }
 }
 
 let lbSaveTimer = null;
-function saveLeaderboardToDisk() {
+function saveLeaderboard() {
   clearTimeout(lbSaveTimer);
   lbSaveTimer = setTimeout(() => {
+    const data = JSON.stringify(leaderboard);
+    /* Upstash (preferred) */
+    if (useUpstash) {
+      upstashCmd('SET', LB_KEY, data).catch(() => {});
+    }
+    /* Disk fallback (also writes when Upstash configured, as backup) */
     try {
       const dir = path.dirname(LB_FILE);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(LB_FILE, JSON.stringify(leaderboard));
-    } catch (e) {
-      console.error('[leaderboard] save failed:', e.message);
-    }
+      fs.writeFileSync(LB_FILE, data);
+    } catch (e) { console.error('[leaderboard] disk save failed:', e.message); }
   }, 400);
 }
 
-loadLeaderboardFromDisk();
+loadLeaderboardOnBoot();
 
 function recordLeaderboard(nickname, level, score) {
   if (!nickname) return;
@@ -64,7 +117,7 @@ function recordLeaderboard(nickname, level, score) {
   }
   leaderboard.sort((a, b) => b.level - a.level || b.score - a.score);
   if (leaderboard.length > 50) leaderboard.length = 50;
-  saveLeaderboardToDisk();
+  saveLeaderboard();
 }
 
 function getTopLeaderboard(n = 5) {
