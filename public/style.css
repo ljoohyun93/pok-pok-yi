@@ -72,12 +72,14 @@ html, body {
   align-items: center;
   justify-content: flex-start;
   overflow-y: auto;
+  overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   padding-top: max(env(safe-area-inset-top), 30px);
   padding-bottom: max(env(safe-area-inset-bottom), 30px);
   gap: 16px;
 }
-#s-lobby > * { flex-shrink: 0; }
+#s-lobby > * { flex-shrink: 0; max-width: 100%; }
+.lobby-wrap { box-sizing: border-box; }
 
 .deco-bubbles {
   position: absolute; inset: 0; pointer-events: none; z-index: 0;
